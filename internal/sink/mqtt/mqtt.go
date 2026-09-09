@@ -594,10 +594,11 @@ func sanitizeTopic(topic, fallback string) string {
 	parts := strings.Split(strings.TrimSpace(topic), "/")
 	out := make([]string, 0, len(parts))
 	for _, p := range parts {
-		if strings.TrimSpace(p) == "" {
+		seg := sanitizeSegmentOrEmpty(p)
+		if seg == "" {
 			continue
 		}
-		out = append(out, sanitizeSegment(p))
+		out = append(out, seg)
 	}
 	if len(out) == 0 {
 		return fallback
