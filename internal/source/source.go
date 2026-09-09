@@ -22,7 +22,12 @@ type Source interface {
 	// it becomes a metric label.
 	Name() string
 
-	// Interval is how often Poll should be called.
+	// Interval is the nominal spacing between polls. It sizes the staleness
+	// window and the failure backoff.
+	//
+	// A source whose upstream publishes on a known clock should also implement
+	// Scheduled, so it is polled just after publication rather than blindly on
+	// this interval.
 	Interval() time.Duration
 
 	// Poll fetches once. It must honour ctx cancellation.
@@ -32,6 +37,30 @@ type Source interface {
 	// with 304, and hamqsl publishes empty elements for fields it has no data
 	// for. Neither is a failure.
 	Poll(ctx context.Context) (metric.Batch, error)
+}
+
+// Scheduled is implemented by a source whose upstream publishes on a known
+// clock rather than continuously.
+//
+// The scheduler prefers Schedule() over Interval() when a source implements
+// this. It is a separate interface so that the common case — an upstream that
+// really does change every minute — stays a one-line Interval().
+type Scheduled interface {
+	Source
+
+	// Schedule decides when this source is next polled.
+	Schedule() Schedule
+}
+
+// scheduleFor returns the schedule a source should be polled on, falling back
+// to a fixed interval for sources that declare no publication clock.
+func scheduleFor(src Source) Schedule {
+	if s, ok := src.(Scheduled); ok {
+		if sched := s.Schedule(); sched != nil {
+			return sched
+		}
+	}
+	return Every(src.Interval())
 }
 
 // ErrNotModified reports that the upstream answered a conditional request with
