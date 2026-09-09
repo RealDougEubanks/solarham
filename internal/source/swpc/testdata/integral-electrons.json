@@ -1,0 +1,38 @@
+[
+ {
+  "time_tag": "2026-09-08T03:55:00Z",
+  "satellite": 19,
+  "flux": 204.532958984375,
+  "energy": ">=2 MeV"
+ },
+ {
+  "time_tag": "2026-09-08T04:00:00Z",
+  "satellite": 19,
+  "flux": 219.53195190429688,
+  "energy": ">=2 MeV"
+ },
+ {
+  "time_tag": "2026-09-08T04:05:00Z",
+  "satellite": 19,
+  "flux": 249.06381225585938,
+  "energy": ">=2 MeV"
+ },
+ {
+  "time_tag": "2026-09-09T03:30:00Z",
+  "satellite": 19,
+  "flux": 981.2135620117188,
+  "energy": ">=2 MeV"
+ },
+ {
+  "time_tag": "2026-09-09T03:35:00Z",
+  "satellite": 19,
+  "flux": 926.8314208984375,
+  "energy": ">=2 MeV"
+ },
+ {
+  "time_tag": "2026-09-09T03:40:00Z",
+  "satellite": 19,
+  "flux": 1016.5028686523438,
+  "energy": ">=2 MeV"
+ }
+]

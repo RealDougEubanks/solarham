@@ -37,9 +37,20 @@ type Scheduler struct {
 	log       *slog.Logger
 	observer  Observer
 
+	// startJitter bounds the random delay before each source's first poll.
+	// Tests set it to zero; nothing else should.
+	startJitter time.Duration
+
 	mu    sync.RWMutex
 	state map[string]*sourceState
 }
+
+// DefaultStartJitter spreads the initial polls across a few seconds.
+//
+// Five sources firing simultaneously at every container start is a
+// self-inflicted thundering herd against upstreams we have already been asked
+// to go easy on.
+const DefaultStartJitter = 3 * time.Second
 
 type sourceState struct {
 	lastSuccess time.Time
@@ -59,11 +70,12 @@ func NewScheduler(sources []Source, publisher Publisher, log *slog.Logger, obser
 		log = slog.Default()
 	}
 	s := &Scheduler{
-		sources:   sources,
-		publisher: publisher,
-		log:       log,
-		observer:  observer,
-		state:     make(map[string]*sourceState, len(sources)),
+		sources:     sources,
+		publisher:   publisher,
+		log:         log,
+		observer:    observer,
+		startJitter: DefaultStartJitter,
+		state:       make(map[string]*sourceState, len(sources)),
 	}
 	for _, src := range sources {
 		s.state[src.Name()] = &sourceState{}
@@ -113,9 +125,7 @@ func (s *Scheduler) runOne(ctx context.Context, src Source) {
 		return
 	}
 
-	// Jitter the first poll across the first few seconds.
-	startDelay := time.Duration(rand.Int64N(int64(3 * time.Second)))
-	timer := time.NewTimer(startDelay)
+	timer := time.NewTimer(s.firstDelay())
 	defer timer.Stop()
 
 	for {
@@ -131,6 +141,17 @@ func (s *Scheduler) runOne(ctx context.Context, src Source) {
 		// recent failures have earned.
 		timer.Reset(s.nextDelay(src, interval))
 	}
+}
+
+// firstDelay is how long to wait before a source's very first poll: a random
+// point within the start jitter, or immediately if jitter is disabled.
+func (s *Scheduler) firstDelay() time.Duration {
+	if s.startJitter <= 0 {
+		// A timer cannot be created with a non-positive duration, so use the
+		// smallest delay that fires effectively at once.
+		return time.Nanosecond
+	}
+	return time.Duration(rand.Int64N(int64(s.startJitter)))
 }
 
 // nextDelay returns how long to wait before polling this source again.

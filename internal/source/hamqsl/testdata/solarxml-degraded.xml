@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!--
+	A degraded but entirely plausible response: the VHF section is present but
+	empty, signalnoise is absent altogether, updated carries a value that is not
+	a timestamp, and several numeric fields are blank. Every one of these has
+	been observed from this feed. None of them may fail a poll.
+-->
+<solar>
+	<solardata>
+		<source url="http://www.hamqsl.com/solar.html">N0NBH</source>
+		<updated>No Report</updated>
+		<solarflux></solarflux>
+		<aindex> 12</aindex>
+		<kindex></kindex>
+		<kindexnt>No Report</kindexnt>
+		<xray>NoRpt</xray>
+		<sunspots></sunspots>
+		<protonflux></protonflux>
+		<electonflux></electonflux>
+		<aurora> 2</aurora>
+		<solarwind></solarwind>
+		<magneticfield>  0.0</magneticfield>
+		<calculatedconditions>
+			<band name="80m-40m" time="day">Poor</band>
+			<band name="30m-20m" time="day">Fair</band>
+		</calculatedconditions>
+		<calculatedvhfconditions>
+		</calculatedvhfconditions>
+		<geomagfield>QUIET</geomagfield>
+		<fof2></fof2>
+		<muffactor></muffactor>
+		<muf>NoRpt</muf>
+	</solardata>
+</solar>
