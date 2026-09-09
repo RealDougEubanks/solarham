@@ -81,7 +81,7 @@ func collect(t *testing.T, reader *sdkmetric.ManualReader) map[string]exported {
 			for _, dp := range gauge.DataPoints {
 				labels := make(map[string]string, dp.Attributes.Len())
 				for _, kv := range dp.Attributes.ToSlice() {
-					labels[string(kv.Key)] = kv.Value.Emit()
+					labels[string(kv.Key)] = kv.Value.String()
 				}
 				e.points = append(e.points, point{value: dp.Value, labels: labels})
 			}
@@ -102,7 +102,7 @@ func resourceAttributes(t *testing.T, reader *sdkmetric.ManualReader) map[string
 
 	out := make(map[string]string)
 	for _, kv := range rm.Resource.Attributes() {
-		out[string(kv.Key)] = kv.Value.Emit()
+		out[string(kv.Key)] = kv.Value.String()
 	}
 	return out
 }

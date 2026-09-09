@@ -24,6 +24,11 @@ linters:
       # which would push people towards silently dropping the call instead.
       # Genuinely unchecked calls are still reported.
       check-blank: false
+    misspell:
+      # Mosquitto is the name of the MQTT broker, spelt with two t's by its
+      # authors. misspell reads it as a typo for the insect.
+      ignore-rules:
+        - mosquitto
     revive:
       rules:
         - name: exported
