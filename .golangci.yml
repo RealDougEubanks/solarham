@@ -1,0 +1,51 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    # An unattended exporter must not be killed by a library returning a
+    # surprise. bodyclose and noctx catch the leaks that build up over months.
+    - bodyclose
+    - noctx
+    - errorlint
+    - misspell
+    - unconvert
+    - revive
+
+  settings:
+    errcheck:
+      # check-blank stays off on purpose. Writing `_ = f()` is how this
+      # codebase marks an ignored error as a deliberate decision rather than
+      # an oversight, and turning check-blank on flags exactly that idiom,
+      # which would push people towards silently dropping the call instead.
+      # Genuinely unchecked calls are still reported.
+      check-blank: false
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+
+  exclusions:
+    rules:
+      # Tests legitimately ignore close errors on throwaway servers, and
+      # noctx's insistence on request contexts is aimed at production code
+      # that could hang. A test against its own httptest server cannot hang
+      # in a way that matters, and threading a context through every helper
+      # would obscure what each test is actually asserting.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - bodyclose
+          - noctx
+
+formatters:
+  enable:
+    - gofmt
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
