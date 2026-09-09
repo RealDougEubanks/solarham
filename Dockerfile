@@ -4,7 +4,7 @@
 # difference between a ~1GB container and a ~20MB one. The image this replaces
 # installed build-base and linux-headers into the runtime layer and shipped
 # roughly 450MB to run a single Python script.
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
 
 WORKDIR /src
 
