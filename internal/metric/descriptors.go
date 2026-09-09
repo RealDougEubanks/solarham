@@ -136,6 +136,18 @@ var (
 		Labels: []string{"hemisphere"},
 	}
 
+	// AuroraBoundary is declared but NOT currently published by any source.
+	//
+	// SWPC's OVATION product states no boundary anywhere: it is a grid of
+	// energy flux by magnetic local time and latitude. Deriving a boundary
+	// from it means choosing a flux threshold, and plausible thresholds move
+	// the answer by several degrees of latitude with nothing in the data to
+	// arbitrate between them. Publishing an invented number under this name
+	// would be worse than publishing nothing.
+	//
+	// The descriptor is kept so the metric name and unit are already agreed if
+	// a defensible source appears. See parseHemisphericPower in the swpc
+	// package for the full reasoning.
 	AuroraBoundary = &Descriptor{
 		Name:   "aurora_equatorward_boundary_degrees",
 		Help:   "Estimated equatorward boundary of the auroral oval in degrees of magnetic latitude. Lower values mean the aurora has expanded towards the equator.",

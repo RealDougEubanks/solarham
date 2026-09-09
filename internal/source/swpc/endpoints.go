@@ -20,6 +20,7 @@ import (
 const (
 	pathWindSpeed     = "/products/summary/solar-wind-speed.json"
 	pathWindMagField  = "/products/summary/solar-wind-mag-field.json"
+	pathWindPlasma    = "/text/ace-swepam.txt"
 	pathKpOneMinute   = "/json/planetary_k_index_1m.json"
 	pathXRayFlares    = "/json/goes/primary/xray-flares-latest.json"
 	pathNOAAScales    = "/products/noaa-scales.json"
@@ -63,6 +64,7 @@ type endpoint struct {
 var fastTierEndpoints = []endpoint{
 	{pathWindSpeed, parseWindSpeed},
 	{pathWindMagField, parseWindMagField},
+	{pathWindPlasma, parseWindPlasma},
 	{pathKpOneMinute, parseKpOneMinute},
 	{pathXRayFlares, parseXRayFlares},
 	{pathNOAAScales, parseNOAAScales},
@@ -156,6 +158,85 @@ func parseWindSpeed(_ *tier, body []byte, _ time.Time) ([]metric.Sample, error) 
 		return nil, nil
 	}
 	return []metric.Sample{{Desc: metric.WindSpeed, Value: speed, Time: when}}, nil
+}
+
+// parseWindPlasma publishes the L1 solar wind proton density.
+//
+// # Why the legacy text product rather than the JSON one
+//
+// Density is not in /products/summary/, which carries only speed and the
+// magnetic field. The obvious modern source is /json/rtsw/rtsw_wind_1m.json,
+// and it is the wrong choice here: it returns roughly 2.5 MB of 3,478 records
+// covering a full day, every minute, to yield one number. That is about 3.6 GB
+// of transfer a day against a public service, for a single gauge.
+//
+// /text/ace-swepam.txt carries the same quantity at the same one-minute
+// cadence in about 9.5 KB — 265 times smaller. The trade is that it is ACE
+// only, where the RTSW feed fails over between ACE, DSCOVR and IMAP, so
+// density will go stale if ACE alone stops reporting while the others carry on.
+// The sentinel handling below turns that into an absent series rather than a
+// wrong one, which is the outcome that matters.
+//
+// # Why only density
+//
+// The file also carries a bulk speed, and it is deliberately ignored.
+// parseWindSpeed already publishes speed from the summary product, and the two
+// disagree: they are different spacecraft sampled at different instants. Two
+// sources writing one series would make the value flap for no physical reason.
+func parseWindPlasma(_ *tier, body []byte, _ time.Time) ([]metric.Sample, error) {
+	// Columns, per the file's own header:
+	//   YR MO DA HHMM  MJD  SecondsOfDay  S  ProtonDensity  BulkSpeed  IonTemp
+	// S is a status flag where 0 means good data.
+	const (
+		colStatus  = 6
+		colDensity = 7
+		colCount   = 9
+	)
+
+	lines := textLines(body)
+	for i := len(lines) - 1; i >= 0; i-- {
+		fields := strings.Fields(lines[i])
+		if len(fields) < colCount {
+			continue
+		}
+
+		// A non-zero status flag marks the row as unusable. Reading its density
+		// anyway is how a -9999.9 ends up on a dashboard as a real number.
+		if status, err := strconv.Atoi(fields[colStatus]); err != nil || status != 0 {
+			continue
+		}
+
+		density, err := strconv.ParseFloat(fields[colDensity], 64)
+		if err != nil || isSentinel(density) {
+			continue
+		}
+
+		when, err := parseSwepamTime(fields)
+		if err != nil {
+			continue
+		}
+
+		return []metric.Sample{{Desc: metric.WindDensity, Value: density, Time: when}}, nil
+	}
+
+	// Every row was flagged, sentinel-valued or malformed. The upstream is
+	// reachable and simply has nothing usable, which is a successful poll with
+	// no samples rather than a failure.
+	return nil, nil
+}
+
+// parseSwepamTime builds a timestamp from the leading date columns of an
+// ace-swepam row: year, month, day, then HHMM as a single four-digit field.
+func parseSwepamTime(fields []string) (time.Time, error) {
+	if len(fields) < 4 {
+		return time.Time{}, fmt.Errorf("too few date fields")
+	}
+	if len(fields[3]) != 4 {
+		return time.Time{}, fmt.Errorf("malformed HHMM field %q", fields[3])
+	}
+	stamp := fmt.Sprintf("%s-%s-%sT%s:%s:00", fields[0], fields[1], fields[2],
+		fields[3][:2], fields[3][2:])
+	return parseTime(stamp)
 }
 
 // parseWindMagField publishes the interplanetary magnetic field total and its

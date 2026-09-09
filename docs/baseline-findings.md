@@ -1,3 +1,9 @@
+<!--
+doc: AUDIT
+last-refreshed: 2026-09-09
+generated-by: doc-refresh skill
+-->
+
 # Baseline findings — pre-rewrite audit
 
 Audit of `solarham.py` as captured from the running `SolarHam` container on

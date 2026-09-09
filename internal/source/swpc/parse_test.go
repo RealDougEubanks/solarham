@@ -701,3 +701,94 @@ func TestFormatCoordinateIsStableAcrossPolls(t *testing.T) {
 		}
 	}
 }
+
+func TestParseWindPlasmaReadsTheNewestGoodRow(t *testing.T) {
+	samples, err := parseWindPlasma(testTier(1), fixture(t, "ace-swepam.txt"), fixedNow)
+	if err != nil {
+		t.Fatalf("parseWindPlasma: %v", err)
+	}
+	s := sampleFor(t, samples, metric.WindDensity)
+	if s.Value != 7.0 {
+		t.Errorf("density = %v, want 7.0 from the last row", s.Value)
+	}
+	want := time.Date(2026, 9, 9, 13, 20, 0, 0, time.UTC)
+	if !s.Time.Equal(want) {
+		t.Errorf("time = %v, want %v built from the row's own date columns", s.Time, want)
+	}
+}
+
+// Only density is taken from this file. parseWindSpeed already publishes speed
+// from the summary product, and the two are different spacecraft sampled at
+// different instants, so letting both write one series would make it flap.
+func TestParseWindPlasmaPublishesDensityOnly(t *testing.T) {
+	samples, err := parseWindPlasma(testTier(1), fixture(t, "ace-swepam.txt"), fixedNow)
+	if err != nil {
+		t.Fatalf("parseWindPlasma: %v", err)
+	}
+	if len(samples) != 1 {
+		t.Fatalf("got %d samples, want exactly 1", len(samples))
+	}
+	if samples[0].Desc != metric.WindDensity {
+		t.Errorf("published %s, want only solar_wind_density", samples[0].Desc.FullName())
+	}
+}
+
+// A non-zero status flag means the row is unusable. Reading its density anyway
+// is exactly how a -9999.9 reaches a dashboard as a real number.
+func TestParseWindPlasmaSkipsFlaggedAndSentinelRows(t *testing.T) {
+	samples, err := parseWindPlasma(testTier(1), fixture(t, "ace-swepam-degraded.txt"), fixedNow)
+	if err != nil {
+		t.Fatalf("parseWindPlasma: %v", err)
+	}
+	s := sampleFor(t, samples, metric.WindDensity)
+	if s.Value != 5.9 {
+		t.Errorf("density = %v, want 5.9: the newer rows are flagged or sentinel", s.Value)
+	}
+}
+
+func TestParseWindPlasmaProducesNoSampleWhenEveryRowIsUnusable(t *testing.T) {
+	// The upstream is reachable and simply has nothing usable. That is a
+	// successful poll with no samples, not a failure.
+	samples, err := parseWindPlasma(testTier(1), fixture(t, "ace-swepam-nodata.txt"), fixedNow)
+	if err != nil {
+		t.Fatalf("parseWindPlasma returned an error for a no-data file: %v", err)
+	}
+	if len(samples) != 0 {
+		t.Errorf("got %d samples, want none: %+v", len(samples), samples)
+	}
+}
+
+func TestParseWindPlasmaToleratesAHeaderOnlyFile(t *testing.T) {
+	body := []byte("# YR MO DA  HHMM  Day  Day  S  Density  Speed  Temperature\n")
+	samples, err := parseWindPlasma(testTier(1), body, fixedNow)
+	if err != nil {
+		t.Fatalf("parseWindPlasma: %v", err)
+	}
+	if len(samples) != 0 {
+		t.Errorf("got %d samples from a header-only file, want none", len(samples))
+	}
+}
+
+func TestParseWindPlasmaRejectsAMalformedTimeField(t *testing.T) {
+	// A row whose HHMM is not four digits is skipped rather than being
+	// timestamped by guesswork.
+	body := []byte("2026 09 09  131   61292   48000    0        7.0      447.4     9.38e+04\n")
+	samples, err := parseWindPlasma(testTier(1), body, fixedNow)
+	if err != nil {
+		t.Fatalf("parseWindPlasma: %v", err)
+	}
+	if len(samples) != 0 {
+		t.Errorf("got %d samples for a malformed HHMM, want none", len(samples))
+	}
+}
+
+func TestParseSwepamTimeBuildsUTCFromTheDateColumns(t *testing.T) {
+	got, err := parseSwepamTime([]string{"2026", "09", "09", "0742"})
+	if err != nil {
+		t.Fatalf("parseSwepamTime: %v", err)
+	}
+	want := time.Date(2026, 9, 9, 7, 42, 0, 0, time.UTC)
+	if !got.Equal(want) {
+		t.Errorf("parseSwepamTime = %v, want %v", got, want)
+	}
+}

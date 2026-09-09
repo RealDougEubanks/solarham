@@ -1,0 +1,15 @@
+:Data_list: ace_swepam_1m.txt
+:Created: 2026 Sep 09 1321 UT
+# Units: Proton density p/cc
+# Units: Bulk speed km/s
+# Units: Ion temperature Kelvin
+# Status(S): 0 = nominal, 1 = bad data unavailable, 2 = time not available
+#
+#                Modified Seconds   -------------  Solar Wind  -----------
+# UT Date   Time  Julian  of the          Proton      Bulk         Ion
+# YR MO DA  HHMM    Day     Day     S    Density     Speed     Temperature
+#-------------------------------------------------------------------------
+2026 09 09  1317   61292   47820    0        5.9      440.1     1.12e+05
+2026 09 09  1318   61292   47880    1    -9999.9    -9999.9    -1.00e+05
+2026 09 09  1319   61292   47940    4        6.6      449.8     8.57e+04
+2026 09 09  1320   61292   48000    1    -9999.9    -9999.9    -1.00e+05

@@ -1,3 +1,9 @@
+<!--
+doc: DESIGN
+last-refreshed: 2026-09-09
+generated-by: doc-refresh skill
+-->
+
 # solarham-exporter — design
 
 A space-weather and HF propagation exporter. It polls several upstream sources,
@@ -39,17 +45,18 @@ equivalent. NOAA SWPC publishes most of it first-hand, in the public domain,
 with no API key, at far better cadence, and — unlike hamqsl — with `ETag` and
 `Last-Modified` so repeat polls cost a 304.
 
-hamqsl is therefore kept for exactly the two things nobody else produces:
-`calculatedconditions` (HF band ratings) and `calculatedvhfconditions`. Those
-are N0NBH's own model output. Everything else comes from NOAA.
+hamqsl is therefore kept for exactly the four things nobody else produces: the
+HF band ratings from `calculatedconditions`, the VHF phenomena from
+`calculatedvhfconditions`, the `signalnoise` estimate, and the `geomagfield`
+wording. Those are N0NBH's own model output. Everything else comes from NOAA.
 
 | Source | Interval | Provides |
 |---|---|---|
-| `hamqsl` | 1 h | HF band conditions, VHF conditions, signal/noise |
-| `swpc-fast` | 1 min | solar wind speed, Bt/Bz, 1-min Kp, X-ray flare class, NOAA G/S/R scales, alerts |
-| `swpc-medium` | 5 min | GOES integral protons and electrons, OVATION aurora, D-RAP absorption |
-| `swpc-slow` | 1 h | F10.7, 3-hourly planetary K and A, daily solar and geomagnetic indices, solar regions, forecasts |
-| `kc2g` | 15 min | foF2, MUF, M(D) factor per ionosonde station; effective SSN/SFI |
+| `hamqsl` | 1 h | HF band conditions, VHF conditions, signal/noise, geomagnetic field wording |
+| `swpc-fast` | 1 min | solar wind speed and density, Bt/Bz, 1-min Kp, X-ray flare class, NOAA G/S/R scales, alerts |
+| `swpc-medium` | 5 min | GOES integral protons and electrons, auroral hemispheric power, D-RAP absorption (opt-in) |
+| `swpc-slow` | 1 h | F10.7 and its 90-day mean, 3-hourly planetary K and A, sunspot number, Dst |
+| `kc2g` | 15 min | foF2, MUF, M(D) factor and hmF2 per ionosonde station; effective SSN/SFI |
 
 Intervals are defaults and are individually configurable, but each is clamped to
 a floor that encodes the upstream's stated policy. `hamqsl` cannot be configured
@@ -59,8 +66,18 @@ can casually override is not a limit.
 ### Sources deliberately not used
 
 - `services.swpc.noaa.gov/products/solar-wind/*` — the entire directory now
-  returns 404. It is widely cited in older code and blog posts. Use
-  `json/rtsw/` instead.
+  returns 404. It is widely cited in older code and blog posts.
+- `json/rtsw/rtsw_wind_1m.json` — the modern replacement for the above, and not
+  used for solar wind density. It returns roughly 2.5 MB of 3,478 records
+  covering a full day, every minute, to yield one number: about 3.6 GB of daily
+  transfer against a public service for a single gauge. `text/ace-swepam.txt`
+  carries the same quantity at the same cadence in about 9.5 KB. The trade is
+  that it is ACE only, where RTSW fails over between ACE, DSCOVR and IMAP, so
+  density becomes absent rather than wrong if ACE alone stops reporting.
+- `text/ovation_latest_aurora_n.txt` — fetched and inspected, then dropped. Its
+  only usable scalar is hemispheric power, which
+  `text/aurora-nowcast-hemi-power.txt` already gives for both hemispheres in a
+  fraction of the 560 KB.
 - GIRO `lgdc.uml.edu/common/DIDBGetValues` — returns 404; the servlet is gone.
   The working replacement is `fastchar/getbest`, but GIRO rate-limits hard (HTTP
   429 after a handful of requests) and its licence requires registration and
@@ -165,7 +182,6 @@ convention and ordinary Prometheus practice.
 | `solar_wind_density_protons_per_cubic_centimeter` | gauge | | swpc |
 | `solar_wind_magnetic_field_nanotesla` | gauge | `component` (`bt`,`bz`) | swpc |
 | `solar_aurora_hemispheric_power_gigawatts` | gauge | `hemisphere` | swpc |
-| `solar_aurora_equatorward_boundary_degrees` | gauge | `hemisphere` | swpc |
 | `solar_geomagnetic_storm_scale` | gauge | | swpc |
 | `solar_radio_blackout_scale` | gauge | | swpc |
 | `solar_radiation_storm_scale` | gauge | | swpc |
@@ -175,6 +191,7 @@ convention and ordinary Prometheus practice.
 | `solar_band_condition` | gauge | `band`,`period` | hamqsl |
 | `solar_band_condition_info` | info | `band`,`period`,`condition` | hamqsl |
 | `solar_vhf_condition` | gauge | `phenomenon`,`location` | hamqsl |
+| `solar_vhf_condition_info` | info | `phenomenon`,`location`,`condition` | hamqsl |
 | `solar_signal_noise_s_units` | gauge | `bound` (`min`,`max`) | hamqsl |
 | `solar_geomagnetic_field_info` | info | `state` | hamqsl |
 | `solar_fof2_megahertz` | gauge | `station`,`station_name` | kc2g |
@@ -184,6 +201,20 @@ convention and ordinary Prometheus practice.
 | `solar_station_confidence_score` | gauge | `station` | kc2g |
 | `solar_effective_sunspot_number` | gauge | | kc2g |
 | `solar_effective_flux_sfu` | gauge | | kc2g |
+
+### Declared but not published
+
+`solar_aurora_equatorward_boundary_degrees` is in the descriptor table and is
+deliberately emitted by nothing.
+
+SWPC's OVATION product states no boundary. It is a grid of energy flux by
+magnetic local time and magnetic latitude, and deriving a boundary from it means
+choosing a flux threshold that the data does not supply. Plausible thresholds
+move the answer by several degrees of latitude, so any number published under
+this name would be an invention dressed as a measurement.
+
+The descriptor stays so the name and unit are settled if a defensible source
+appears. Hemispheric power, which OVATION does state, is published instead.
 
 Self-instrumentation, mirroring the sibling:
 

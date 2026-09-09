@@ -1,3 +1,9 @@
+<!--
+doc: README
+last-refreshed: 2026-09-09
+generated-by: doc-refresh skill
+-->
+
 # solarham-exporter
 
 Exports space weather and HF propagation data to Prometheus, InfluxDB 1.x and
@@ -61,7 +67,7 @@ makes outbound HTTPS requests and serves one port.
 
 | Source | Default | Interval | Provides |
 |---|---|---|---|
-| `swpc` | on | 1 m / 5 m / 1 h | solar wind, Bz, Kp, A, F10.7, sunspots, X-ray, particle flux, aurora, NOAA scales, Dst, alerts, D-RAP |
+| `swpc` | on | 1 m / 5 m / 1 h | solar wind speed and density, Bt/Bz, Kp, A, F10.7, sunspots, X-ray class, particle flux, auroral power, NOAA G/S/R scales, Dst, alerts, D-RAP (opt-in) |
 | `hamqsl` | on | 1 h | HF band conditions, VHF conditions, signal/noise, geomagnetic field wording |
 | `kc2g` | **off** | 15 m | foF2, MUF, M(3000)F2, effective SSN and flux |
 
@@ -169,6 +175,18 @@ an upstream outage into a restart loop, which is strictly worse than the outage.
 `/health` names which backends are configured but carries no URLs, hostnames or
 credentials. It is unauthenticated so external monitors can reach it, which
 means it must not become a reconnaissance tool.
+
+## Documentation
+
+| Document | Read it when |
+|---|---|
+| [docs/RUNBOOK.md](docs/RUNBOOK.md) | Something is broken and you need it working now |
+| [docs/ENV_VARS.md](docs/ENV_VARS.md) | You need the complete list of all 70 settings |
+| [docs/design.md](docs/design.md) | You want to know why it is built this way |
+| [docs/assumptions.md](docs/assumptions.md) | You disagree with a decision and want the reasoning |
+| [docs/baseline-findings.md](docs/baseline-findings.md) | You want the audit of what the Python version got wrong |
+| [SECURITY.md](SECURITY.md) | You are handling credentials or exposing the port |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | You are about to change the code |
 
 ## Configuration
 
