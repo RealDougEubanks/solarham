@@ -246,7 +246,18 @@ func (c *Client) attempt(ctx context.Context, req Request, parsed *url.URL) (*Re
 		return nil, fmt.Errorf("%w: %v", ErrPermanent, err)
 	}
 	httpReq.Header.Set("User-Agent", UserAgent)
-	httpReq.Header.Set("Accept-Encoding", "gzip")
+
+	// Accept-Encoding is deliberately NOT set here.
+	//
+	// Go's transport adds "Accept-Encoding: gzip" itself and transparently
+	// decompresses the response — but only while the caller has not set that
+	// header. Setting it manually silently transfers responsibility for
+	// decoding to us, so every body arrives still compressed and every parser
+	// fails on the gzip magic byte 0x1f. Requests are still compressed; the
+	// transport simply owns both halves of the bargain.
+	//
+	// A source that genuinely wants to handle its own encoding can still set
+	// the header through Headers below, and then owns the decoding too.
 	for k, v := range req.Headers {
 		httpReq.Header.Set(k, v)
 	}

@@ -1,0 +1,28 @@
+#{
+# "HAPI": "2.0",
+# "parameters": [
+#  {
+#   "fill": "null",
+#   "length": 22,
+#   "name": "Time",
+#   "type": "isotime",
+#   "units": "UTC"
+#  },
+#  {
+#   "fill": "9999",
+#   "name": "Dst",
+#   "type": "double",
+#   "units": "nT",
+#   "description": "Disturbance Storm Time Index"
+#  }
+# ],
+# "startDate": "2022-01-01T00:00:00Z",
+# "stopDate": "2026-09-09T15:00:00Z",
+# "status": {
+#  "code": 1200,
+#  "message": "OK"
+# }
+#}
+2026-09-09T13:00:00Z,-16
+2026-09-09T14:00:00Z,-15
+2026-09-09T15:00:00Z,-18

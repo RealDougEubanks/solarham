@@ -188,6 +188,51 @@ func TestTheFullFixtureProducesExactlyTheExpectedSetOfSamples(t *testing.T) {
 		"solar_muf_factor{PRJ18,PRJ18}=3.03",
 		"solar_muf_megahertz{PRJ18,PRJ18}=20",
 		"solar_station_confidence_score{PRJ18}=75",
+
+		// The E layer and sporadic E. These fields were in this document all
+		// along and were simply not being decoded, so the exporter fetched
+		// measured sporadic-E data every poll and discarded it.
+		"solar_foe_megahertz{AU930,Austin, TX, USA}=3.32",
+		"solar_foe_megahertz{BC840,Boulder, CO, USA}=3.3",
+		"solar_foe_megahertz{JR055,Moscow, Russia}=2.6",
+		"solar_foe_megahertz{MHJ45,Kokubunji, Japan}=3",
+		"solar_foe_megahertz{PRJ18,PRJ18}=3.2",
+		"solar_foes_megahertz{AU930,Austin, TX, USA}=3.6",
+		"solar_foes_megahertz{BC840,Boulder, CO, USA}=3.4",
+		"solar_foes_megahertz{JR055,Moscow, Russia}=2.5",
+		"solar_foes_megahertz{MHJ45,Kokubunji, Japan}=3",
+		"solar_foes_megahertz{PRJ18,PRJ18}=3.1",
+
+		// Ionogram-derived TEC, independent of the GNSS-derived figure.
+		"solar_station_total_electron_content_tecu{AU930,Austin, TX, USA}=15.837",
+		"solar_station_total_electron_content_tecu{BC840,Boulder, CO, USA}=14.9",
+		"solar_station_total_electron_content_tecu{JR055,Moscow, Russia}=10.2",
+		"solar_station_total_electron_content_tecu{MHJ45,Kokubunji, Japan}=12",
+		"solar_station_total_electron_content_tecu{PRJ18,PRJ18}=13.6",
+
+		// Which upstream network each reading came from.
+		"solar_station_source_info{AU930,giro}=1",
+		"solar_station_source_info{BC840,giro}=1",
+		"solar_station_source_info{JR055,giro}=1",
+		"solar_station_source_info{MHJ45,giro}=1",
+		"solar_station_source_info{PRJ18,giro}=1",
+
+		// Per-station age, so the freshness filter is visible in the metrics
+		// rather than only in a debug log.
+		"solar_station_data_age_seconds{kc2g,AU930}=295",
+		"solar_station_data_age_seconds{kc2g,BC840}=100",
+		"solar_station_data_age_seconds{kc2g,JR055}=390",
+		"solar_station_data_age_seconds{kc2g,MHJ45}=240",
+		"solar_station_data_age_seconds{kc2g,PRJ18}=350",
+
+		// Why the rest of the document was discarded. One station is stale and
+		// two fail the confidence threshold, and an operator looking at an
+		// empty panel needs to be able to see that from the metrics.
+		"solar_stations_filtered{kc2g,bad_timestamp}=0",
+		"solar_stations_filtered{kc2g,low_confidence}=2",
+		"solar_stations_filtered{kc2g,no_station_code}=0",
+		"solar_stations_filtered{kc2g,not_selected}=0",
+		"solar_stations_filtered{kc2g,stale}=1",
 	}
 	sort.Strings(want)
 
@@ -285,7 +330,10 @@ func TestTheStationAllowListRestrictsPublicationAndIgnoresCase(t *testing.T) {
 	}
 	seen := map[string]bool{}
 	for _, s := range batch.Samples {
-		seen[s.Labels[0]] = true
+		if !isPerStation(s) {
+			continue
+		}
+		seen[stationOf(s)] = true
 	}
 	if len(seen) != 2 || !seen["AU930"] || !seen["BC840"] {
 		t.Fatalf("allow-list should admit AU930 and BC840 only, got %v", seen)
@@ -374,12 +422,19 @@ func TestEachSampleCarriesItsOwnStationTimestampReadAsUTC(t *testing.T) {
 		"MHJ45": time.Date(2026, 9, 8, 12, 1, 0, 0, time.UTC),
 	}
 	for _, s := range batch.Samples {
-		if !s.Time.Equal(want[s.Labels[0]]) {
+		// The two diagnostic metrics are facts about poll time rather than
+		// observations of the ionosphere, so they carry the poll clock. Every
+		// measurement must carry its own station's timestamp.
+		if !isPerStation(s) {
+			continue
+		}
+		station := stationOf(s)
+		if !s.Time.Equal(want[station]) {
 			t.Errorf("%s %s: got time %s, want %s",
-				s.Labels[0], s.Desc.Name, s.Time, want[s.Labels[0]])
+				station, s.Desc.Name, s.Time, want[station])
 		}
 		if s.Time.Location() != time.UTC {
-			t.Errorf("%s: timestamp is not UTC: %s", s.Labels[0], s.Time.Location())
+			t.Errorf("%s: timestamp is not UTC: %s", station, s.Time.Location())
 		}
 	}
 }
@@ -651,4 +706,86 @@ func TestTheSourceIdentifiesItselfConsistently(t *testing.T) {
 	if src.Name() != Name || Name != "kc2g" {
 		t.Fatalf("Name: got %q, want %q", src.Name(), "kc2g")
 	}
+}
+
+// isPerStation reports whether a sample is a measurement of one ionosonde, as
+// opposed to one of the two poll-time diagnostics that label by source name.
+func isPerStation(s metric.Sample) bool {
+	switch s.Desc {
+	case metric.StationsFiltered, metric.StationDataAge:
+		return false
+	}
+	return true
+}
+
+// stationOf returns the station code from a per-station sample.
+func stationOf(s metric.Sample) string {
+	if len(s.Labels) == 0 {
+		return ""
+	}
+	return s.Labels[0]
+}
+
+// Roughly half the stations in this document report a null foEs at any given
+// time. Absent is not zero: a station with no sporadic-E measurement must
+// produce no sporadic-E sample, not a reading of 0 MHz.
+func TestANullSporadicEProducesNoSample(t *testing.T) {
+	body := []byte(`[{"time":"2026-09-08T12:00:05","fof2":8.6,"mufd":28.8,"md":"3.35",
+	  "hmf2":241.8,"cs":100.0,"foes":null,"fbes":null,"foe":null,"tec":null,
+	  "source":"giro","station":{"code":"AU930","name":"Austin, TX, USA"}}]`)
+
+	srv := newServer(t, serveBytes(body), nil)
+	src := newSource(t, srv.URL, nil)
+
+	batch, err := src.Poll(context.Background())
+	if err != nil {
+		t.Fatalf("Poll: %v", err)
+	}
+
+	for _, s := range batch.Samples {
+		switch s.Desc {
+		case metric.FoEs, metric.FbEs, metric.FoE, metric.StationTEC:
+			t.Errorf("%s was published for a station that reported null: value %v",
+				s.Desc.FullName(), s.Value)
+		}
+	}
+
+	// The station's other measurements must still publish; one absent field
+	// does not discard the reading.
+	var sawFoF2 bool
+	for _, s := range batch.Samples {
+		if s.Desc == metric.FoF2 {
+			sawFoF2 = true
+		}
+	}
+	if !sawFoF2 {
+		t.Error("foF2 was not published; a null sporadic-E field cost the whole station")
+	}
+}
+
+// The source label on the info metric is what shows, from the metrics alone,
+// that most of this data originates from GIRO -- which is the evidence for not
+// polling GIRO directly as well.
+func TestTheUpstreamNetworkIsPublished(t *testing.T) {
+	body := []byte(`[{"time":"2026-09-08T12:00:05","fof2":8.6,"cs":100.0,
+	  "source":"ingv","station":{"code":"RO041","name":"Rome, Italy"}}]`)
+
+	srv := newServer(t, serveBytes(body), nil)
+	src := newSource(t, srv.URL, nil)
+
+	batch, err := src.Poll(context.Background())
+	if err != nil {
+		t.Fatalf("Poll: %v", err)
+	}
+
+	for _, s := range batch.Samples {
+		if s.Desc != metric.StationSourceInfo {
+			continue
+		}
+		if got := s.Labels[1]; got != "ingv" {
+			t.Errorf("source label = %q, want %q", got, "ingv")
+		}
+		return
+	}
+	t.Error("no station_source_info sample was published")
 }

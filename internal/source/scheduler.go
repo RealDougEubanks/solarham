@@ -45,6 +45,10 @@ type Scheduler struct {
 	// waiting for a wall-clock publication slot.
 	clock func() time.Time
 
+	// authority ranks sources against each other when two publish the same
+	// series. See metric.Batch.Authority.
+	authority map[string]int
+
 	mu    sync.RWMutex
 	state map[string]*sourceState
 }
@@ -66,6 +70,18 @@ type sourceState struct {
 	// backoff is the current additional delay applied after consecutive
 	// failures. It resets to zero on any success.
 	backoff time.Duration
+}
+
+// SetAuthority ranks sources for collision resolution.
+//
+// Several quantities are published by more than one upstream and they are not
+// equally good, so the ordering has to be declared somewhere. It lives in main
+// next to its reasoning rather than being implied by which source happens to
+// poll last.
+func (s *Scheduler) SetAuthority(authority map[string]int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.authority = authority
 }
 
 // NewScheduler returns a scheduler over the given sources.
@@ -237,8 +253,18 @@ func (s *Scheduler) pollOnce(ctx context.Context, src Source) {
 		"source", src.Name(), "samples", batch.Len(), "duration", duration)
 
 	if batch.Len() > 0 && s.publisher != nil {
+		batch.Authority = s.authorityFor(src.Name())
 		s.publisher.Publish(ctx, batch)
 	}
+}
+
+// authorityFor returns a source's collision rank, defaulting to zero for a
+// source nobody has ranked -- which is correct for the great majority, since
+// most publish quantities no other source touches.
+func (s *Scheduler) authorityFor(name string) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.authority[name]
 }
 
 // record updates the source's state for the health endpoints and adjusts its

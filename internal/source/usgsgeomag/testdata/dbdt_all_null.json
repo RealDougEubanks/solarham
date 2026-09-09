@@ -1,0 +1,31 @@
+{
+  "type": "Timeseries",
+  "metadata": {
+    "intermagnet": {
+      "imo": {"iaga_code": "FRD", "coordinates": [null, null, null]},
+      "reported_orientation": "X_DTY_DTZ_DTF_DT",
+      "data_type": "A0",
+      "sampling_period": 60.0
+    },
+    "status": 200,
+    "generated": "2026-09-09T15:45:13Z",
+    "url": null
+  },
+  "comment": [
+    "Hand-constructed from the live dbdt shape. Every value is null, which is",
+    "what an observatory that has stopped reporting looks like: HTTP 200, a",
+    "well-formed document, a full set of timestamps, and no observations. The",
+    "correct output is no samples at all, not four zeroes."
+  ],
+  "times": [
+    "2026-09-09T15:43:00.000Z",
+    "2026-09-09T15:44:00.000Z",
+    "2026-09-09T15:45:00.000Z"
+  ],
+  "values": [
+    {"id": "X_DT", "metadata": {"element": "X_DT", "station": "FRD", "channel": "X_DT"}, "values": [null, null, null]},
+    {"id": "Y_DT", "metadata": {"element": "Y_DT", "station": "FRD", "channel": "Y_DT"}, "values": [null, null, null]},
+    {"id": "Z_DT", "metadata": {"element": "Z_DT", "station": "FRD", "channel": "Z_DT"}, "values": [null, null, null]},
+    {"id": "F_DT", "metadata": {"element": "F_DT", "station": "FRD", "channel": "F_DT"}, "values": [null, null, null]}
+  ]
+}

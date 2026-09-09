@@ -1,0 +1,42 @@
+; DATA_list: 20260909_EVE_L0CS_DIODES_1m.txt
+; Created: Wed Sep  9 15:44:13 2026 UTC
+; Origin: SDO/EVE Science Processing and Operations Center, LASP/CU
+; Units: W/m^2 for irradiance, dark is Counts/Second, quadrants are unitless, solar lat & lon are deg
+; Source: SDO-EVE ESP and MEGS-P instruments, http://lasp.colorado.edu/eve
+; Product: Level 0CS, 1-minute averaged SDO-EVE Solar Indices from broadband photometers
+; Version: 5.0, code updated 2022-Nov-22
+; Missing data: -1.00e+00
+; Column descriptions:
+;  HHMM: hour and minute in UT
+;  XRS-B proxy: a model of the expected XRS-B 0.1-0.8 nm, calculated using two-component method
+;  XRS-A proxy: a model of the expected XRS-A
+;  SEM proxy: a model of the expected SEM 26-34 nm
+;  0.1-7ESPquad: the total irradiance over the ESP quadrant diode 0.1-7 nm
+;  17.1ESP: ESP irradiance measurement near 17.1 nm
+;  25.7ESP: ESP irradiance measurement near 25.7 nm
+;  30.4ESP: ESP irradiance measurement near 30.4 nm
+;  36.6ESP: ESP irradiance measurement near 36.6 nm
+;  darkESP: ESP dark diode count rate (counts/second) background
+;  121.6MEGS-P: MEGS-P irradiance measurement at H I Lyman-alpha 121.6 nm
+;  darkMEGS-P: MEGS-P dark diode count rate (counts/second) background
+;  q0ESP: ESP quadrant 0 fraction (q0ESP to q3ESP add up to 1.0)
+;  q1ESP: ESP quadrant 1 fraction
+;  q2ESP: ESP quadrant 2 fraction
+;  q3ESP: ESP quadrant 3 fraction
+;  CMLat: Latitude centroid of ESP quad diode irradiance at the sun in degrees
+;  CMLon: Longitude centroid of ESP quad diode irradiance at the sun in degrees
+;  x_cool proxy: Cool component for calculating XRS-B proxy
+;  oldXRSB proxy: XRS-B calculated using the version 2 method
+; Format:
+;  YYYY DOY MO DD
+;  HHMM  XRS-B    XRS-A     SEM     0.1-7      17.1       25.7       30.4       36.6       dark      121.6       dark      q0         q1         q2         q3         CM    CM    x_cool    oldXRSB
+;        proxy    proxy    proxy    ESPquad    ESP        ESP        ESP        ESP        ESP       MEGS-P      MEGS-P    ESP        ESP        ESP        ESP        Lat   Lon   proxy     proxy
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+;END_OF_HEADER
+2026 252 09 09
+0000  1.70e-06  1.94e-08  1.57e-04  2.748e-04  7.256e-04  3.445e-04  7.111e-04 -1.000e+00  1.94e+02 -1.0000e+00  1.58e+02  3.504e-01  1.973e-01  2.673e-01  1.850e-01  -9.7 -30.6  1.17e+03  2.63e-08
+0001  1.65e-06  1.87e-08  1.57e-04  2.750e-04  7.255e-04  3.446e-04  7.114e-04 -1.000e+00  1.94e+02 -1.0000e+00  1.59e+02  3.493e-01  1.982e-01  2.669e-01  1.857e-01  -9.5 -30.5  1.17e+03  2.56e-08
+0002  1.65e-06  1.87e-08  1.57e-04  2.747e-04  7.254e-04  3.447e-04  7.114e-04 -1.000e+00  1.94e+02 -1.0000e+00  1.61e+02  3.472e-01  1.996e-01  2.660e-01  1.872e-01  -9.0 -30.0  1.17e+03  2.56e-08
+1542  4.11e-07  3.59e-09  1.56e-04  1.923e-04  7.327e-04  3.446e-04  7.038e-04 -1.000e+00  1.94e+02 -1.0000e+00  1.55e+02  3.353e-01  2.031e-01  2.607e-01  2.009e-01  -6.1 -25.1  1.16e+03  7.54e-09
+1543  4.13e-07  3.60e-09  1.56e-04  1.918e-04  7.326e-04  3.446e-04  7.035e-04 -1.000e+00  1.94e+02 -1.0000e+00  1.57e+02  3.355e-01  2.028e-01  2.613e-01  2.004e-01  -6.2 -25.0  1.16e+03  7.55e-09
+1544  4.29e-07  3.75e-09  1.56e-04  1.916e-04  7.326e-04  3.446e-04  7.029e-04 -1.000e+00  1.94e+02  6.7982e-03  1.52e+02  3.361e-01  2.021e-01  2.617e-01  2.001e-01  -6.3 -25.0  1.16e+03  7.77e-09

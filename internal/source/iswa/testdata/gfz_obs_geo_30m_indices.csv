@@ -1,0 +1,38 @@
+#{
+# "HAPI": "2.0",
+# "parameters": [
+#  {
+#   "fill": "null",
+#   "length": 22,
+#   "name": "Time",
+#   "type": "isotime",
+#   "units": "UTC"
+#  },
+#  {
+#   "fill": "null",
+#   "name": "Hp30",
+#   "type": "double",
+#   "units": "index",
+#   "description": "Hp at 30 minute cadence"
+#  },
+#  {
+#   "fill": "null",
+#   "name": "ap30",
+#   "type": "double",
+#   "units": "index",
+#   "description": "ap at 30 minute cadence"
+#  }
+# ],
+# "startDate": "1985-01-01T00:15:00Z",
+# "stopDate": "2026-09-09T14:45:00Z",
+# "status": {
+#  "code": 1200,
+#  "message": "OK"
+# }
+#}
+2026-09-09T12:45:00Z,3.333,18
+2026-09-09T13:15:00Z,3.667,22
+2026-09-09T13:45:00Z,3.333,18
+2026-09-09T14:15:00Z,3,15
+2026-09-09T14:45:00Z,3.333,18
+2026-09-09T15:15:00Z,3,15

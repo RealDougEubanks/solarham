@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -242,9 +243,33 @@ func (l *loader) Enum(name, def string, allowed ...string) string {
 // the empty string, since "no filter" and "filter on nothing" would otherwise
 // be indistinguishable and the second one publishes nothing at all.
 func (l *loader) StringSlice(name string) []string {
+	return l.StringSliceDefault(name, nil)
+}
+
+// StringSliceDefault is StringSlice with a built-in list.
+//
+// Several of the observatory and station networks list more members than anyone
+// wants to poll — INTERMAGNET has 154 — so the useful default for those is a
+// curated handful rather than "all of them". A nil default keeps the
+// no-filter meaning that StringSlice documents.
+func (l *loader) StringSliceDefault(name string, def []string) []string {
+	fallback := func(src Source) []string {
+		if len(def) == 0 {
+			l.record(name, src, "(all)")
+			return nil
+		}
+		l.record(name, src, strings.Join(def, ", "))
+		return def
+	}
+
 	v, src, ok := l.raw(name)
-	if !ok || strings.TrimSpace(v) == "" {
-		l.record(name, SourceDefault, "(all)")
+	if !ok {
+		return fallback(SourceDefault)
+	}
+	if strings.TrimSpace(v) == "" {
+		// An explicitly empty value is a deliberate "no filter", so it must be
+		// able to clear a built-in default rather than being overridden by it.
+		l.record(name, src, "(all)")
 		return nil
 	}
 
@@ -257,16 +282,30 @@ func (l *loader) StringSlice(name string) []string {
 		out = append(out, item)
 	}
 	if len(out) == 0 {
-		l.record(name, SourceDefault, "(all)")
+		l.record(name, src, "(all)")
 		return nil
 	}
 	l.record(name, src, strings.Join(out, ", "))
 	return out
 }
 
-// StringMap reads comma-separated key=value pairs, used for OTLP headers.
-// Values are not logged, since headers commonly carry authorization tokens.
+// StringMap reads comma-separated key=value pairs, used for OTLP headers,
+// GloTEC sample points and KiwiSDR receivers.
+//
+// Values are not logged: headers commonly carry authorization tokens, and a
+// receiver URL can name somebody's home address on a hostname.
 func (l *loader) StringMap(name string) map[string]string {
+	return l.StringMapDelim(name, ",")
+}
+
+// StringMapDelim is StringMap with the pair separator chosen by the caller.
+//
+// A comma is the right separator almost everywhere, but not where the value
+// itself contains one: GloTEC's sample points are "lat,lon" pairs, and
+// splitting those on a comma would tear every coordinate in half. Those use a
+// semicolon between pairs and keep the comma inside the value, which is the way
+// the coordinate is written everywhere else.
+func (l *loader) StringMapDelim(name, delim string) map[string]string {
 	v, src, ok := l.raw(name)
 	if !ok || strings.TrimSpace(v) == "" {
 		l.record(name, SourceDefault, "(unset)")
@@ -275,7 +314,7 @@ func (l *loader) StringMap(name string) map[string]string {
 
 	out := map[string]string{}
 	var keys []string
-	for _, pair := range strings.Split(v, ",") {
+	for _, pair := range strings.Split(v, delim) {
 		pair = strings.TrimSpace(pair)
 		if pair == "" {
 			continue
@@ -297,7 +336,21 @@ func (l *loader) StringMap(name string) map[string]string {
 		l.record(name, SourceDefault, "(unset)")
 		return nil
 	}
-	l.record(name, src, fmt.Sprintf("%d header(s): %s", len(out), strings.Join(keys, ", ")))
+	l.record(name, src, fmt.Sprintf("%d entries: %s", len(out), strings.Join(keys, ", ")))
+	return out
+}
+
+// sortedKeys returns a map's keys in a stable order.
+//
+// Error messages are iterated over maps in a few places here, and a report that
+// lists the same three problems in a different order on every restart is
+// noticeably harder to work through than one that does not.
+func sortedKeys(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	slices.Sort(out)
 	return out
 }
 

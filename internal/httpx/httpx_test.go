@@ -1,6 +1,7 @@
 package httpx
 
 import (
+	"compress/gzip"
 	"context"
 	"errors"
 	"io"
@@ -606,5 +607,63 @@ func TestNewDefaultBuildsAUsableClient(t *testing.T) {
 	}
 	if got := c.limiterFor("nobody.example.invalid").policy.MinInterval; got != DefaultFallback.MinInterval {
 		t.Errorf("unlisted host spacing = %v, want the fallback", got)
+	}
+}
+
+// A gzipped response must arrive decoded.
+//
+// This is a regression test for a real bug: the client used to set
+// "Accept-Encoding: gzip" itself, which makes Go's transport stop
+// transparently decompressing and hands that job to the caller. Every JSON and
+// CSV parser in the exporter then failed on the gzip magic byte, and it only
+// showed up against live upstreams because httptest servers do not compress.
+func TestAGzippedResponseIsDecodedBeforeItIsReturned(t *testing.T) {
+	const payload = `{"flux": 110}`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			t.Errorf("Accept-Encoding = %q, want the transport to have offered gzip",
+				r.Header.Get("Accept-Encoding"))
+		}
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Set("Content-Type", "application/json")
+		gz := gzip.NewWriter(w)
+		defer func() { _ = gz.Close() }()
+		_, _ = gz.Write([]byte(payload))
+	}))
+	defer srv.Close()
+
+	c, _ := newTestClient(t, HostPolicy{})
+	resp, err := c.Get(context.Background(), Request{URL: srv.URL})
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+
+	if len(resp.Body) > 0 && resp.Body[0] == 0x1f {
+		t.Fatal("body still begins with the gzip magic byte; it was not decoded")
+	}
+	if got := string(resp.Body); got != payload {
+		t.Errorf("body = %q, want %q", got, payload)
+	}
+}
+
+// The client must not claim an encoding it will not decode.
+func TestTheClientDoesNotSetAcceptEncodingItself(t *testing.T) {
+	var explicit bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Go's transport adds its own header at the transport layer, below
+		// where a handler can distinguish it from ours. What matters is that
+		// the value is exactly what the transport uses, so decoding stays
+		// automatic.
+		explicit = r.Header.Get("Accept-Encoding") != "gzip"
+	}))
+	defer srv.Close()
+
+	c, _ := newTestClient(t, HostPolicy{})
+	if _, err := c.Get(context.Background(), Request{URL: srv.URL}); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if explicit {
+		t.Error("Accept-Encoding was not the transport's own value; transparent decoding is off")
 	}
 }
