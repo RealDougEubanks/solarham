@@ -682,6 +682,23 @@ func fromEpochSeconds(epoch time.Time, seconds float64) (time.Time, error) {
 	if math.IsNaN(seconds) || math.IsInf(seconds, 0) {
 		return time.Time{}, errors.New("time offset is not a finite number")
 	}
+
+	// The magnitude is checked before the conversion, not after, because
+	// converting an out-of-range float to an integer type is
+	// implementation-defined in Go — and the implementations genuinely differ.
+	// A Julian Date misread as days since 1970 is about 2.1e20 nanoseconds,
+	// which overflows int64: arm64 saturates and produces an absurd year that
+	// the range check below catches, while amd64 wraps and produces 1677, which
+	// sits inside the plausible range and was accepted. This exporter ships
+	// both architectures, so the same input silently parsed two different ways.
+	//
+	// 1e10 seconds is roughly 317 years, far beyond anything any of these
+	// datasets can legitimately express.
+	const maxOffsetSeconds = 1e10
+	if math.Abs(seconds) > maxOffsetSeconds {
+		return time.Time{}, fmt.Errorf("time offset of %g seconds is out of range; the units were probably misread", seconds)
+	}
+
 	at := epoch.Add(time.Duration(seconds * float64(time.Second))).UTC().Round(time.Second)
 
 	// Nothing LISIRD publishes predates the 1610 telescope or postdates now by

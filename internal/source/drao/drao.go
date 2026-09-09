@@ -245,7 +245,7 @@ func (s *Source) Poll(ctx context.Context) (metric.Batch, error) {
 		// so a 304 at three polls a day is ordinary rather than suspicious.
 		return batch, source.ErrNotModified
 	case errors.Is(err, httpx.ErrRateLimited):
-		return batch, fmt.Errorf("%w: %v", source.ErrRateLimited, err)
+		return batch, fmt.Errorf("%w: %w", source.ErrRateLimited, err)
 	case err != nil:
 		return batch, err
 	}

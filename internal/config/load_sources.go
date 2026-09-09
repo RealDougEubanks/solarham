@@ -505,7 +505,7 @@ func validateHTTPURL(value string) error {
 
 	parsed, err := url.Parse(trimmed)
 	if err != nil {
-		return fmt.Errorf("%q, which is not a URL: %v", trimmed, err)
+		return fmt.Errorf("%q, which is not a URL: %w", trimmed, err)
 	}
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return fmt.Errorf("%q, which is not an absolute http:// or https:// URL", trimmed)

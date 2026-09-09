@@ -145,10 +145,10 @@ func sampleFor(t *testing.T, b metric.Batch, desc *metric.Descriptor, labels ...
 // describe renders a batch for a failure message.
 func describe(b metric.Batch) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("batch of %d sample(s):", len(b.Samples)))
+	fmt.Fprintf(&sb, "batch of %d sample(s):", len(b.Samples))
 	for _, s := range b.Samples {
-		sb.WriteString(fmt.Sprintf("\n  %s%v = %g at %s",
-			s.Desc.FullName(), s.Labels, s.Value, s.Time.Format(time.RFC3339)))
+		fmt.Fprintf(&sb, "\n  %s%v = %g at %s",
+			s.Desc.FullName(), s.Labels, s.Value, s.Time.Format(time.RFC3339))
 	}
 	return sb.String()
 }

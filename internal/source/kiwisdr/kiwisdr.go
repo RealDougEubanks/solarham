@@ -315,7 +315,7 @@ func (s *Source) Poll(ctx context.Context) (metric.Batch, error) {
 	}
 	if errors.Is(joined, httpx.ErrRateLimited) {
 		return metric.Batch{Source: Name, Fetched: now},
-			fmt.Errorf("%w: %v", source.ErrRateLimited, joined)
+			fmt.Errorf("%w: %w", source.ErrRateLimited, joined)
 	}
 	return metric.Batch{Source: Name, Fetched: now},
 		fmt.Errorf("kiwisdr: every configured receiver failed: %w", joined)

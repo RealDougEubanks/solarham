@@ -241,7 +241,7 @@ func (s *Source) Poll(ctx context.Context) (metric.Batch, error) {
 			notModified++
 		case errors.Is(err, httpx.ErrRateLimited):
 			return metric.Batch{Source: Name, Fetched: fetched},
-				fmt.Errorf("%w: %v", source.ErrRateLimited, err)
+				fmt.Errorf("%w: %w", source.ErrRateLimited, err)
 		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 			return metric.Batch{Source: Name, Fetched: fetched}, fmt.Errorf("lasp: eve: %w", err)
 		case err != nil:
@@ -258,7 +258,7 @@ func (s *Source) Poll(ctx context.Context) (metric.Batch, error) {
 		switch {
 		case errors.Is(err, httpx.ErrRateLimited):
 			return metric.Batch{Source: Name, Fetched: fetched},
-				fmt.Errorf("%w: %v", source.ErrRateLimited, err)
+				fmt.Errorf("%w: %w", source.ErrRateLimited, err)
 		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 			return metric.Batch{Source: Name, Fetched: fetched}, fmt.Errorf("lasp: lisird: %w", err)
 		case err != nil:

@@ -243,7 +243,7 @@ func (c *Client) Get(ctx context.Context, req Request) (*Response, error) {
 func (c *Client) attempt(ctx context.Context, req Request, parsed *url.URL) (*Response, error) {
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, req.URL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrPermanent, err)
+		return nil, fmt.Errorf("%w: %w", ErrPermanent, err)
 	}
 	httpReq.Header.Set("User-Agent", UserAgent)
 

@@ -304,7 +304,7 @@ func (s *Source) Poll(ctx context.Context) (metric.Batch, error) {
 	}
 	if errors.Is(joined, httpx.ErrRateLimited) {
 		return metric.Batch{Source: Name, Fetched: now},
-			fmt.Errorf("%w: %v", source.ErrRateLimited, joined)
+			fmt.Errorf("%w: %w", source.ErrRateLimited, joined)
 	}
 	if len(batch.Samples) > 0 {
 		s.log.Warn("fmi partially succeeded; publishing what was fetched",

@@ -354,7 +354,7 @@ func (s *Source) Poll(ctx context.Context) (metric.Batch, error) {
 	// the scheduler stops knocking on a door that has just been closed.
 	if errors.Is(joined, httpx.ErrRateLimited) {
 		return metric.Batch{Source: Name, Fetched: now},
-			fmt.Errorf("%w: %v", source.ErrRateLimited, joined)
+			fmt.Errorf("%w: %w", source.ErrRateLimited, joined)
 	}
 	if succeeded > 0 {
 		s.log.Warn("usgs-geomag partially succeeded; publishing what was fetched",

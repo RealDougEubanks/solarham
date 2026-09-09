@@ -296,7 +296,7 @@ func (s *Source) Poll(ctx context.Context) (metric.Batch, error) {
 			// Surfaced in the source vocabulary so the scheduler backs off
 			// rather than treating it as an ordinary failure.
 			return metric.Batch{Source: Name, Fetched: fetched},
-				fmt.Errorf("%w: %v", source.ErrRateLimited, err)
+				fmt.Errorf("%w: %w", source.ErrRateLimited, err)
 		case err != nil:
 			errs = append(errs, fmt.Errorf("%s: %w", j.path, err))
 		default:
