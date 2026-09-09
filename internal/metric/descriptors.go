@@ -1,5 +1,7 @@
 package metric
 
+import "slices"
+
 // The descriptor table. Every metric this exporter can publish is declared
 // here and nowhere else.
 //
@@ -295,7 +297,20 @@ var (
 
 // All lists every descriptor. Sinks that must declare their metrics up front,
 // and the tests that check the table for consistency, iterate this.
-var All = []*Descriptor{
+//
+// The table is split across files by domain rather than kept in one list,
+// because a single slice that every new source appends to is a merge conflict
+// waiting to happen.
+var All = slices.Concat(
+	coreDescriptors,
+	forecastDescriptors,
+	ionosphereDescriptors,
+	activityDescriptors,
+)
+
+// coreDescriptors are the solar, geomagnetic and propagation quantities the
+// exporter started with.
+var coreDescriptors = []*Descriptor{
 	FluxSFU,
 	FluxNinetyDayMeanSFU,
 	SunspotNumber,

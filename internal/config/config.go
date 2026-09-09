@@ -15,11 +15,33 @@ import (
 // sink or source constructor takes exactly the settings it needs and cannot
 // reach the ones it does not.
 type Config struct {
-	Log        Log
-	HTTP       HTTP
-	Hamqsl     Hamqsl
-	SWPC       SWPC
-	KC2G       KC2G
+	Log    Log
+	HTTP   HTTP
+	Hamqsl Hamqsl
+	SWPC   SWPC
+	KC2G   KC2G
+	// Sources added after the initial release.
+	SolarProbabilities SolarProbabilities
+	GloTEC             GloTEC
+	ISWA               ISWA
+	DONKI              DONKI
+	USGSGeomag         USGSGeomag
+	GFZ                GFZ
+	DRAO               DRAO
+	LASP               LASP
+	FMI                FMI
+	KiwiSDR            KiwiSDR
+	LoTW               LoTW
+	POTA               POTA
+	Celestrak          Celestrak
+
+	// Restricted-licence sources, all disabled by default.
+	WSPRLive    WSPRLive
+	PSKReporter PSKReporter
+	NMDB        NMDB
+	INTERMAGNET INTERMAGNET
+	SILSO       SILSO
+
 	Prometheus Prometheus
 	InfluxV1   InfluxV1
 	InfluxV2   InfluxV2
@@ -220,5 +242,25 @@ func AnySinkEnabled(c *Config) bool {
 
 // AnySourceEnabled reports whether at least one source is configured.
 func AnySourceEnabled(c *Config) bool {
-	return c.Hamqsl.Enabled || c.SWPC.Enabled || c.KC2G.Enabled
+	return c.Hamqsl.Enabled ||
+		c.SWPC.Enabled ||
+		c.KC2G.Enabled ||
+		c.SolarProbabilities.Enabled ||
+		c.GloTEC.Enabled ||
+		c.ISWA.Enabled ||
+		c.DONKI.Enabled ||
+		c.USGSGeomag.Enabled ||
+		c.GFZ.Enabled ||
+		c.DRAO.Enabled ||
+		c.LASP.Enabled ||
+		c.FMI.Enabled ||
+		c.KiwiSDR.Enabled ||
+		c.LoTW.Enabled ||
+		c.POTA.Enabled ||
+		c.Celestrak.Enabled ||
+		c.WSPRLive.Enabled ||
+		c.PSKReporter.Enabled ||
+		c.NMDB.Enabled ||
+		c.INTERMAGNET.Enabled ||
+		c.SILSO.Enabled
 }
