@@ -1139,3 +1139,69 @@ func TestParseRetryAfterReadsSecondsAndDates(t *testing.T) {
 		})
 	}
 }
+
+// Line protocol rejects a point carrying the same tag key twice — and rejects
+// the whole batch, not the one point. Several descriptors legitimately declare
+// a "source" label of their own, so appending the batch's source unconditionally
+// produced "duplicate tags" and cost every other sample in the request.
+//
+// This was found by running against a real InfluxDB; no unit test existed that
+// paired a source-labelled descriptor with a batch source.
+func TestADescriptorOwningTheSourceLabelDoesNotProduceADuplicateTag(t *testing.T) {
+	var body string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		body = string(b)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	s := newSink(t, testConfig(srv.URL), discardLogger())
+	err := s.Publish(context.Background(), metric.Batch{
+		Source: "swpc-forecast",
+		Samples: []metric.Sample{{
+			Desc:   metric.SourceDataAge,
+			Labels: []string{"swpc-forecast"},
+			Value:  15795,
+			Time:   time.Date(2026, 9, 9, 16, 23, 0, 0, time.UTC),
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+
+	if strings.Count(body, "source=") != 1 {
+		t.Errorf("line carries %d source tags, want exactly 1:\n%s",
+			strings.Count(body, "source="), body)
+	}
+	if !strings.Contains(body, "source=swpc-forecast") {
+		t.Errorf("the descriptor's own source value was lost:\n%s", body)
+	}
+}
+
+// A descriptor with no source label of its own must still get the batch's.
+func TestADescriptorWithoutASourceLabelStillGetsTheBatchSource(t *testing.T) {
+	var body string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		body = string(b)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	s := newSink(t, testConfig(srv.URL), discardLogger())
+	if err := s.Publish(context.Background(), metric.Batch{
+		Source: "drao",
+		Samples: []metric.Sample{{
+			Desc:  metric.FluxSFU,
+			Value: 111.5,
+			Time:  time.Date(2026, 9, 9, 16, 23, 0, 0, time.UTC),
+		}},
+	}); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+
+	if !strings.Contains(body, "source=drao") {
+		t.Errorf("batch source tag missing:\n%s", body)
+	}
+}
