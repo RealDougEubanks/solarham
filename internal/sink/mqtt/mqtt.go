@@ -553,6 +553,16 @@ func (s *Sink) stateTopic(sample metric.Sample) string {
 // only which topic a value lands on, and no real label set in this exporter's
 // vocabulary collides.
 func sanitizeSegment(s string) string {
+	if out := sanitizeSegmentOrEmpty(s); out != "" {
+		return out
+	}
+	return emptySegment
+}
+
+// sanitizeSegmentOrEmpty is sanitizeSegment without the placeholder, so callers
+// building a multi-segment prefix can drop a segment that had nothing usable in
+// it rather than writing "unknown" into the middle of a topic.
+func sanitizeSegmentOrEmpty(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
 	underscore := false
@@ -570,11 +580,7 @@ func sanitizeSegment(s string) string {
 			}
 		}
 	}
-	out := strings.Trim(b.String(), "_")
-	if out == "" {
-		return emptySegment
-	}
-	return out
+	return strings.Trim(b.String(), "_")
 }
 
 // sanitizeTopic cleans a multi-segment prefix such as the base topic or the
