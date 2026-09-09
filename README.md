@@ -63,6 +63,13 @@ secrets:
 The container needs no root, no writable filesystem and no capabilities. It
 makes outbound HTTPS requests and serves one port.
 
+> **SECURITY:** Port 9102 is unauthenticated by design, so that external uptime
+> monitors can reach `/readyz`. Do not expose it to the internet. Prefer
+> `SOLARHAM_INFLUX2_TOKEN_FILE` over the plain variable — a plain environment
+> variable is readable by anyone who can run `docker inspect`. Scope the
+> InfluxDB token to **write on one bucket**; this service never reads. See
+> [SECURITY.md](SECURITY.md).
+
 ## Sources
 
 | Source | Default | Interval | Provides |
