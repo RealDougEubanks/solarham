@@ -259,3 +259,79 @@ decided during that work and written down afterwards.
   predecessor's use of the official async client is also what hid its 404s.
 - **Recorded by:** Claude (with Doug Eubanks)
 - **Date:** 2026-09-09
+
+## Series collisions are resolved by declared authority, not by arrival
+
+- **Assumption:** Where two sources publish the same series, an explicit
+  per-source ranking decides the winner, and only timestamps break ties within
+  a rank.
+- **Why:** Eighteen additional sources brought eight genuine same-key
+  collisions. Without an ordering the winner would be whichever source last
+  polled with a newer upstream timestamp, so a dashboard would show a number
+  flapping between two subtly different values for no visible reason — not
+  obviously broken, just quietly wrong, which is the worst available outcome.
+  The rule is that the more authoritative and current source wins: DRAO
+  Penticton over NOAA for the 10.7 cm flux because it operates the instrument,
+  GFZ Potsdam over NOAA for Kp because it defines the index, USGS over
+  INTERMAGNET for BOU and FRD because it operates them. Losing a contest costs
+  a source that one series and nothing else.
+- **Recorded by:** Claude (with Doug Eubanks)
+- **Date:** 2026-09-09
+
+## Polling cadence is matched to publication, not chosen for convenience
+
+- **Assumption:** A source whose upstream publishes on a known clock declares
+  that clock and is polled shortly after it, rather than on a fixed interval.
+- **Why:** Most of these upstreams are not continuous. DRAO measures the flux
+  three times per UT day; NOAA regenerates its daily indices once, around 02:25
+  UT; the ARRL activity file is rebuilt about weekly. Polling any of them every
+  few minutes fetches an identical document hundreds of times to learn nothing,
+  which is discourteous to the publisher and useless to us. The schedule
+  carries a lag because a stated time is when a publisher starts writing, not
+  when the file becomes readable — polling at exactly the stated minute fetches
+  yesterday's copy and then waits a full period to notice.
+- **Recorded by:** Claude (with Doug Eubanks)
+- **Date:** 2026-09-09
+
+## Request spacing is enforced per host, shared across sources
+
+- **Assumption:** Rate limiting lives in one shared HTTP client keyed by
+  hostname, not in each source.
+- **Why:** A per-source limiter lets ten sources each politely make one request
+  per second to the same host and collectively make ten. Several of these
+  publishers have asked in writing to be polled gently and one has been shut
+  down by his ISP over exactly this load, so the limit has to be a property of
+  the host rather than of the caller. Spacing also cannot be disabled by
+  omission — an unconfigured policy is floored to a safe value, and only an
+  explicit zero disables it, which is the case for polling your own receiver on
+  localhost.
+- **Recorded by:** Claude (with Doug Eubanks)
+- **Date:** 2026-09-09
+
+## Accept-Encoding is left to Go's transport
+
+- **Assumption:** The shared HTTP client never sets `Accept-Encoding` itself.
+- **Why:** Go's transport adds the header and transparently decompresses the
+  response, but only while the caller has not set it. Setting it manually
+  silently transfers decoding responsibility to the caller, so every body
+  arrives still compressed. This was a real bug: four sources failed on the
+  gzip magic byte, and it was invisible to the test suite because `httptest`
+  servers do not compress. Requests are still compressed; the transport simply
+  owns both halves.
+- **Recorded by:** Claude (with Doug Eubanks)
+- **Date:** 2026-09-09
+
+## Satellite pass predictions are not published
+
+- **Assumption:** Only element-set freshness is exported, never a countdown to
+  the next pass.
+- **Why:** A countdown is a computed function of time rather than an
+  observation. It is wrong between scrapes, quantised to the scrape interval,
+  reconstructs badly in any range query, and cannot be meaningfully averaged or
+  rate-limited. Element-set age is a genuine fact about the outside world, and
+  stale elements are a real operational problem worth alerting on. The same
+  reasoning excludes hosted propagation predictions, which are monthly-median
+  models driven by a smoothed sunspot number and change only at month
+  boundaries.
+- **Recorded by:** Claude (with Doug Eubanks)
+- **Date:** 2026-09-09
