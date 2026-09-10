@@ -1,10 +1,21 @@
 version: 2
 
+# Schedules here govern *version updates* only -- the routine "a newer release
+# exists" pull requests.
+#
+# Security alerts are deliberately not on this schedule and cannot be put on
+# one. They fire whenever a new advisory matches something in go.sum, which is
+# what you want: holding a known vulnerability until Friday to keep the inbox
+# tidy would be the wrong trade.
+
 updates:
   - package-ecosystem: gomod
     directory: "/"
     schedule:
       interval: weekly
+      day: friday
+      time: "06:00"
+      timezone: America/New_York
     open-pull-requests-limit: 5
     commit-message:
       prefix: "deps"
@@ -22,6 +33,9 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+      day: friday
+      time: "06:00"
+      timezone: America/New_York
     commit-message:
       prefix: "ci"
 
@@ -29,5 +43,8 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+      day: friday
+      time: "06:00"
+      timezone: America/New_York
     commit-message:
       prefix: "docker"
