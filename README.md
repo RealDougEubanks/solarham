@@ -338,6 +338,12 @@ docker build -t solarham:dev .
 
 The image is distroless static and non-root; a release build is around 20 MB.
 
+## Releasing
+
+Go to **Actions → Release → Run workflow** and choose `patch`, `minor` or
+`major`. There is a dry-run option that shows the version it would produce
+without tagging. Pushing a `v*` tag by hand does the same thing.
+
 ## Licence
 
 MIT. See [LICENSE](LICENSE).
