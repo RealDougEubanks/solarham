@@ -1,0 +1,124 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.26"
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      # A go.mod that does not match the source is a merge accident waiting to
+      # happen, so the check runs before anything else has a chance to mask it.
+      - name: Check go.mod is tidy
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::These files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+      # The race detector is the point of this step. Five sources publish
+      # concurrently into one sample store that every scrape reads.
+      - name: Test with race detector
+        run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
+
+      - name: Report coverage
+        run: |
+          total=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}')
+          echo "Total coverage: ${total}" >> "$GITHUB_STEP_SUMMARY"
+          go tool cover -func=coverage.out >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
+          if-no-files-found: error
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      # v8 of the action is the one that understands golangci-lint v2 config.
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+          args: --timeout=5m
+
+  image:
+    name: Image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: false
+          load: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Build again for the host platform only so the result can be measured.
+      - name: Build for size check
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: solarham:size-check
+          cache-from: type=gha
+
+      # A static Go binary on distroless has no business growing past this. The
+      # gate exists because the image being replaced was roughly 450MB, and a
+      # size regression is the clearest early signal that something has been
+      # pulled into the runtime layer that does not belong there.
+      - name: Check image size
+        run: |
+          bytes=$(docker image inspect solarham:size-check --format '{{.Size}}')
+          mb=$((bytes / 1024 / 1024))
+          echo "Image is ${mb}MB" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$mb" -gt 60 ]; then
+            echo "::error::Image is ${mb}MB, expected well under 60MB"
+            exit 1
+          fi
