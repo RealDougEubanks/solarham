@@ -216,17 +216,38 @@ New sinks default to **disabled**.
 Maintainer only.
 
 1. Merge to `main` and confirm CI is green.
-2. Tag with a `v` prefix:
+2. Go to **Actions → Release → Run workflow**, choose `patch`, `minor` or
+   `major`, and run it.
 
-   ```bash
-   git tag -a v0.2.0 -m "v0.2.0 — short summary"
-   git push origin v0.2.0
-   ```
+That is the whole process. The workflow reads the latest tag, computes the next
+version, creates and pushes the annotated tag, re-runs vet and the race suite,
+builds `linux/amd64` and `linux/arm64`, pushes to Docker Hub with the full
+version plus the `major.minor`, `major` and `latest` tags, attaches an SBOM and
+a provenance attestation, syncs the Docker Hub description, and generates
+release notes.
 
-3. The release workflow re-runs vet and the race suite, then builds
-   `linux/amd64` and `linux/arm64`, pushes to Docker Hub with semver tags plus
-   `latest`, attaches an SBOM and a provenance attestation, and generates
-   release notes.
+Tick **dry run** to see which version it would produce without tagging or
+publishing anything.
+
+Pushing a tag by hand still works and does the same thing, so nothing here is
+load-bearing on the Actions tab:
+
+```bash
+git tag -a v1.1.0 -m "v1.1.0 — short summary"
+git push origin v1.1.0
+```
+
+### Why the bump is chosen rather than inferred
+
+Tools like release-please derive the version from Conventional Commit prefixes
+(`feat:`, `fix:`). This project writes sentence-case imperative subjects with no
+prefix, so nothing in the history distinguishes a patch from a minor. Rather
+than change how every commit is written to satisfy a tool, the one decision the
+history cannot express is made at release time — which for a public image with
+hundreds of pulls is a decision worth making deliberately anyway.
+
+Release tags are protected: `v*` cannot be deleted or moved. A published
+version therefore always refers to the same commit.
 
 > **SECURITY:** Publishing requires the repository secrets
 > `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`. Use a Docker Hub **access token**
