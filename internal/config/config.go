@@ -72,9 +72,18 @@ type HTTP struct {
 	ShutdownTimeout time.Duration
 
 	// StaleAfter overrides the per-source staleness window used by /readyz.
-	// Zero means each source uses three of its own intervals, which is almost
-	// always what you want given how widely the intervals differ.
+	// Zero means each source derives its own window from its schedule, which
+	// is almost always what you want given how widely the schedules differ.
 	StaleAfter time.Duration
+
+	// ReadyRequireAll makes /readyz fail when any single source is stale,
+	// rather than only when none is fresh.
+	//
+	// The default is off. One third-party outage does not stop this instance
+	// serving, and no restart or traffic shift fixes it, so failing readiness
+	// on it produces an alert nobody can act on. Turn this on if you would
+	// rather a partial dataset be treated as no dataset.
+	ReadyRequireAll bool
 }
 
 // Hamqsl configures the hamqsl.com solar XML source.

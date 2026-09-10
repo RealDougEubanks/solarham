@@ -667,3 +667,26 @@ func TestTheClientDoesNotSetAcceptEncodingItself(t *testing.T) {
 		t.Error("Accept-Encoding was not the transport's own value; transparent decoding is off")
 	}
 }
+
+func TestPeekReportsTheWaitWithoutConsumingAToken(t *testing.T) {
+	// peek exists so a long rate-limit wait can be logged before it happens.
+	// If it took a token it would change the behaviour it is meant to observe.
+	l := &hostLimiter{policy: HostPolicy{MinInterval: 5 * time.Minute, Burst: 1}, tokens: 1}
+	now := time.Now()
+
+	if got := l.peek(now); got != 0 {
+		t.Errorf("peek with a token available = %v, want 0", got)
+	}
+	if got := l.reserve(now); got != 0 {
+		t.Errorf("reserve after peek = %v, want 0; peek consumed the token", got)
+	}
+
+	// With the bucket now empty, peek must report a wait and still not alter it.
+	first := l.peek(now)
+	if first <= 0 {
+		t.Fatalf("peek with an empty bucket = %v, want a positive wait", first)
+	}
+	if second := l.peek(now); second != first {
+		t.Errorf("peek is not idempotent: %v then %v", first, second)
+	}
+}

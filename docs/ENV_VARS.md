@@ -72,7 +72,8 @@ Consumed in `cmd/solarham-exporter/main.go` (`newLogger`).
 | `SOLARHAM_HTTP_ADDR` | No | `0.0.0.0:9102` | Listen address for all endpoints |
 | `SOLARHAM_HTTP_READ_TIMEOUT` | No | `10s` | Request read timeout. Range 1s–5m. |
 | `SOLARHAM_HTTP_SHUTDOWN_TIMEOUT` | No | `10s` | Grace period on SIGTERM. Range 1s–5m. |
-| `SOLARHAM_HTTP_STALE_AFTER` | No | `0` | Overrides how long a source may go without success before `/readyz` fails. `0` derives it per source as three of that source's own intervals. |
+| `SOLARHAM_HTTP_STALE_AFTER` | No | `0` | Overrides how long a source may go without success before it counts as stale. `0` derives it per source from that source's schedule: three intervals for a fixed cadence, or the longest gap between publication slots plus lag and grace for a daily one. |
+| `SOLARHAM_READY_REQUIRE_ALL` | No | `false` | Makes `/readyz` fail when any single source is stale. The default fails only when no source is fresh. See the note below. |
 
 > **SECURITY:** `0.0.0.0` listens on every interface. The endpoints are
 > unauthenticated by design so external monitors can reach `/readyz`. Do not
@@ -328,3 +329,48 @@ This is a single-maintainer homelab project with no shared vault.
 > **SECURITY:** Generate a token scoped to **write on one bucket**. Do not use
 > an all-access or operator token. This service only ever writes; it never
 > needs to read, create buckets, or manage organisations.
+
+## Why `/readyz` ignores a single stale source
+
+`/readyz` answers one question: should an orchestrator keep routing traffic to
+this instance, or restart it?
+
+A single upstream being down does not answer that question in the affirmative.
+Every replica polls the same public endpoints, so draining to another instance
+reaches one missing exactly the same source, and restarting does not bring
+`celestrak.org` back. Under the strict rule a third-party outage pinned
+`/readyz` at 503 for as long as the outage lasted, with no action available to
+whoever it woke up.
+
+Every source stale is a different signal. That points at something local and
+fixable — no egress, broken DNS, a clock so far off that every window looks
+expired — so that is the condition the default policy fails on.
+
+The strict signal is not lost, only moved to the endpoint whose job it is:
+
+| Endpoint | Fails when | Point it at |
+|---|---|---|
+| `/healthz` | never (process is alive) | container liveness probe |
+| `/readyz` | no source is fresh | orchestrator readiness, load balancer |
+| `/health` | any source is stale | external uptime monitor, on-call alerting |
+
+Set `SOLARHAM_READY_REQUIRE_ALL=true` to restore the old behaviour if you would
+rather a partial dataset be treated as no dataset.
+
+### Alerting on one source
+
+`/health` names the failing source in its body, and Prometheus carries the same
+verdict without you restating each source's schedule in the alert rule:
+
+```promql
+time() - solar_source_last_success_timestamp_seconds
+  > solar_source_stale_window_seconds
+```
+
+`solar_source_stale_window_seconds` is the window the exporter derived from that
+source's own schedule — three minutes for the one-minute SWPC feeds, better than
+twenty hours for an observatory that publishes three times a day. A single
+hand-written threshold cannot serve both.
+
+A source that has never succeeded publishes no timestamp at all, so pair the
+rule above with `absent()` if a cold start matters to you.

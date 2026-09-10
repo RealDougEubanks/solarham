@@ -54,6 +54,7 @@ type Sink struct {
 	pollTotal       *prometheus.CounterVec
 	pollDuration    *prometheus.HistogramVec
 	pollLastSuccess *prometheus.GaugeVec
+	staleWindow     *prometheus.GaugeVec
 	publishTotal    *prometheus.CounterVec
 	publishDuration *prometheus.HistogramVec
 	buildInfo       *prometheus.GaugeVec
@@ -116,6 +117,10 @@ func New(cfg config.Prometheus, store *metric.Store, log *slog.Logger) (*Sink, e
 			Name: metric.Prefix + "source_last_success_timestamp_seconds",
 			Help: "Unix time of the most recent successful poll of each source.",
 		}, []string{"source"}),
+		staleWindow: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: metric.Prefix + "source_stale_window_seconds",
+			Help: "How long each source may go without a successful poll before it is stale.",
+		}, []string{"source"}),
 		publishTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: metric.Prefix + "sink_publish_total",
 			Help: "Publish attempts per sink, by outcome: success, skipped or failure.",
@@ -139,6 +144,7 @@ func New(cfg config.Prometheus, store *metric.Store, log *slog.Logger) (*Sink, e
 	// impossible, so a failure here is a programming error: it is logged and
 	// the collector left out rather than taking the exporter with it.
 	for _, c := range []prometheus.Collector{
+		s.staleWindow,
 		s.samples, s.pollTotal, s.pollDuration, s.pollLastSuccess,
 		s.publishTotal, s.publishDuration, s.buildInfo,
 	} {
@@ -369,4 +375,31 @@ type promLogger struct{ log *slog.Logger }
 
 func (l promLogger) Println(v ...any) {
 	l.log.Error("scrape error", "sink", Name, "error", fmt.Sprint(v...))
+}
+
+// SetStaleWindow publishes how long a source may go without a successful poll
+// before it should be considered stale.
+//
+// This is the companion to source_last_success_timestamp_seconds, and the pair
+// is what makes a correct staleness alert expressible without restating the
+// exporter's schedules in the alerting rules:
+//
+//	time() - solar_source_last_success_timestamp_seconds
+//	  > solar_source_stale_window_seconds
+//
+// The window differs by an order of magnitude across sources -- three minutes
+// for the one-minute SWPC feeds, better than twenty hours for an observatory
+// that publishes three times a day -- so a single hand-written threshold is
+// either far too tight for the slow sources or useless for the fast ones. The
+// exporter already knows each window because it derives it from the schedule;
+// exporting it moves that knowledge to where the alert is written.
+//
+// It is a gauge rather than a constant because a source's schedule can change
+// between releases, and an alert built on a stale hard-coded number is the
+// failure this is meant to prevent.
+func (s *Sink) SetStaleWindow(source string, window time.Duration) {
+	if s == nil || window <= 0 {
+		return
+	}
+	s.staleWindow.WithLabelValues(source).Set(window.Seconds())
 }

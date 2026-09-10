@@ -41,6 +41,10 @@ type Scheduler struct {
 	// Tests set it to zero; nothing else should.
 	startJitter time.Duration
 
+	// pollBudget bounds one whole poll, retries and rate-limit waits included.
+	// See pollOnce.
+	pollBudget time.Duration
+
 	// clock is injectable so schedule arithmetic can be tested without
 	// waiting for a wall-clock publication slot.
 	clock func() time.Time
@@ -59,6 +63,20 @@ type Scheduler struct {
 // self-inflicted thundering herd against upstreams we have already been asked
 // to go easy on.
 const DefaultStartJitter = 3 * time.Second
+
+// DefaultPollBudget bounds one whole poll: every retry and every rate-limit
+// wait inside it.
+//
+// Two minutes is comfortably longer than any healthy poll here -- the slowest
+// upstream in normal operation answers in a few seconds -- and short enough
+// that a stuck source reports a failure while somebody is still looking at it.
+//
+// It is deliberately shorter than the multi-minute rate-limit floors on a few
+// hosts, which means a poll that has to wait for a token will be cut off
+// rather than sit through it. That is the intent: the next scheduled poll
+// costs nothing and does the same work, whereas holding a poll open makes the
+// source look unscheduled rather than slow.
+const DefaultPollBudget = 2 * time.Minute
 
 type sourceState struct {
 	lastSuccess time.Time
@@ -95,6 +113,7 @@ func NewScheduler(sources []Source, publisher Publisher, log *slog.Logger, obser
 		log:         log,
 		observer:    observer,
 		startJitter: DefaultStartJitter,
+		pollBudget:  DefaultPollBudget,
 		clock:       time.Now,
 		state:       make(map[string]*sourceState, len(sources)),
 	}
@@ -212,22 +231,45 @@ func (s *Scheduler) nextDelay(src Source, sched Schedule) time.Duration {
 func (s *Scheduler) pollOnce(ctx context.Context, src Source) {
 	start := time.Now()
 
+	// Bound the whole poll, not just the requests inside it.
+	//
+	// The per-request timeout in httpx bounds one HTTP call. It does not bound
+	// a Poll, because retries wait on the shared per-host rate limiter: on a
+	// host with a five-minute floor, three attempts is fifteen minutes inside
+	// one Poll. That happened in production -- a single celestrak poll ran for
+	// 420 seconds while /health reported successes=0, failures=0, which is
+	// indistinguishable from a source that was never scheduled.
+	//
+	// Retrying past this budget is not worth what it costs anyway. On a host
+	// slow enough to hit the budget, the next scheduled poll does the same job
+	// without holding a goroutine and a misleading health entry open in the
+	// meantime.
+	pollCtx, cancel := context.WithTimeout(ctx, s.pollBudget)
+	defer cancel()
+
 	batch, err := func() (b metric.Batch, err error) {
 		defer func() {
 			if p := recover(); p != nil {
 				err = fmt.Errorf("source %s panicked: %v", src.Name(), p)
 			}
 		}()
-		return src.Poll(ctx)
+		return src.Poll(pollCtx)
 	}()
 
 	duration := time.Since(start)
 
-	// A cancelled context means the process is shutting down. That is not a
-	// source failure and must not be recorded as one, or every clean stop
-	// would leave a failure as the last thing in the metrics.
+	// A cancelled parent context means the process is shutting down. That is
+	// not a source failure and must not be recorded as one, or every clean
+	// stop would leave a failure as the last thing in the metrics.
+	//
+	// The poll's own budget expiring is the opposite: it is a real failure and
+	// must be recorded, so the parent is what gets checked here, never pollCtx.
 	if err != nil && ctx.Err() != nil {
 		return
+	}
+
+	if err != nil && errors.Is(pollCtx.Err(), context.DeadlineExceeded) {
+		err = fmt.Errorf("poll exceeded its %s budget: %w", s.pollBudget, err)
 	}
 
 	s.record(src, batch, duration, err)
