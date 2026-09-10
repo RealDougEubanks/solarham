@@ -16,8 +16,52 @@ env:
   GO_VERSION: "1.26"
 
 jobs:
+  # Decides whether this change can possibly affect the built artefact.
+  #
+  # This is a job with an `if:` on the jobs that follow, rather than a
+  # `paths-ignore:` on the workflow itself, and the difference matters. A
+  # workflow skipped by path filtering never reports its checks at all, so
+  # every required check sits Pending and the pull request can never merge --
+  # a deadlock that only shows up once branch protection is on. A job skipped
+  # by a conditional does report, as "skipped", which branch protection
+  # accepts.
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    outputs:
+      buildable: ${{ steps.filter.outputs.buildable }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            buildable:
+              - '**/*.go'
+              - 'go.mod'
+              - 'go.sum'
+              - 'Dockerfile'
+              - '.dockerignore'
+              - '.golangci.yml'
+              - '.github/workflows/**'
+
+      - name: Explain the decision
+        run: |
+          if [ "${{ steps.filter.outputs.buildable }}" = "true" ]; then
+            echo "Code, build or workflow files changed - running the full suite." >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "Only documentation changed - skipping the build, test and scan jobs."
+              echo
+              echo "They report as skipped, which branch protection accepts, so this still merges."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   test:
     name: Test
+    needs: changes
+    if: needs.changes.outputs.buildable == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -72,6 +116,8 @@ jobs:
   # somewhere in the dependency tree we never call.
   vulncheck:
     name: Vulnerabilities
+    needs: changes
+    if: needs.changes.outputs.buildable == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -105,6 +151,8 @@ jobs:
 
   lint:
     name: Lint
+    needs: changes
+    if: needs.changes.outputs.buildable == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -121,6 +169,8 @@ jobs:
 
   image:
     name: Image
+    needs: changes
+    if: needs.changes.outputs.buildable == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

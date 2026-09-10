@@ -30,8 +30,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # See the note in ci.yml: this is a job-level conditional rather than a
+  # workflow-level paths-ignore, because a skipped workflow never reports its
+  # checks and Analyze is a required one -- so path-filtering the workflow
+  # would leave every documentation pull request unmergeable.
+  #
+  # The scheduled run always analyses, whatever changed. That is the point of
+  # it: CodeQL's query pack is updated continuously, so the weekly run exists
+  # to re-examine code nobody has touched.
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            code:
+              - '**/*.go'
+              - 'go.mod'
+              - 'go.sum'
+
   analyze:
     name: Analyze
+    needs: changes
+    if: github.event_name == 'schedule' || needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     permissions:
       # security-events: write is what lets the run upload its findings to the
