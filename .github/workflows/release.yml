@@ -1,8 +1,30 @@
 name: Release
 
 on:
+  # Pushing a tag by hand still works and still publishes.
   push:
     tags: ["v*"]
+
+  # Or release from the Actions tab without touching your terminal.
+  #
+  # The bump has to be chosen rather than inferred. This project writes
+  # sentence-case imperative commit subjects with no conventional-commit
+  # prefix, so nothing in the history says whether a change is a patch or a
+  # minor -- and guessing wrong on a public image with hundreds of pulls is
+  # worse than asking.
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Which part of the version to increment"
+        type: choice
+        required: true
+        default: patch
+        options: [patch, minor, major]
+      dry_run:
+        description: "Work out the next version and stop, without tagging or publishing"
+        type: boolean
+        required: false
+        default: false
 
 # Least privilege at the top: the verify job needs only to read the code. The
 # write permissions belong to the release job alone and are declared there, so
@@ -15,10 +37,92 @@ env:
   IMAGE: dougeubanks/solarham
 
 jobs:
+  # Works out what is being released, and creates the tag when the run was
+  # started from the Actions tab.
+  #
+  # The tag is created here rather than in a separate workflow on purpose. A tag
+  # pushed using GITHUB_TOKEN does not start another workflow run -- that is a
+  # deliberate GitHub restriction against recursive triggers -- so a "tag it and
+  # let the release workflow notice" design produces a tag and no release, and
+  # fails silently. Doing both in one run sidesteps that entirely.
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      major: ${{ steps.resolve.outputs.major }}
+      major_minor: ${{ steps.resolve.outputs.major_minor }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve the version
+        id: resolve
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ]; then
+            tag="${GITHUB_REF_NAME}"
+            echo "releasing the pushed tag $tag"
+          else
+            latest=$(git tag -l 'v*' --sort=-v:refname | head -1)
+            [ -n "$latest" ] || latest="v0.0.0"
+            IFS=. read -r major minor patch <<< "${latest#v}"
+            case "${{ inputs.bump }}" in
+              major) major=$((major+1)); minor=0; patch=0 ;;
+              minor) minor=$((minor+1)); patch=0 ;;
+              patch) patch=$((patch+1)) ;;
+            esac
+            tag="v${major}.${minor}.${patch}"
+            echo "latest tag $latest, ${{ inputs.bump }} bump gives $tag"
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              echo "::error::$tag already exists"
+              exit 1
+            fi
+          fi
+          version="${tag#v}"
+          # A pre-release carries a hyphen: v1.1.0-rc1. It gets its exact
+          # version tag but must never move latest.
+          case "$version" in
+            *-*) prerelease=true ;;
+            *)   prerelease=false ;;
+          esac
+          core="${version%%-*}"
+          IFS=. read -r vmaj vmin _ <<< "$core"
+          {
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "major=$vmaj"
+            echo "major_minor=${vmaj}.${vmin}"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "## Release $tag"
+            echo
+            echo "Triggered by \`${{ github.event_name }}\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create and push the tag
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run != true
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.resolve.outputs.tag }}" \
+            -m "${{ steps.resolve.outputs.tag }}
+
+          Released from ${GITHUB_SHA} by the Release workflow."
+          git push origin "${{ steps.resolve.outputs.tag }}"
+
   # A tag must never publish something that would have failed CI. The tag build
   # does not inherit the branch build's result, so the checks run again here
   # rather than being assumed.
   verify:
+    needs: version
     name: Verify
     runs-on: ubuntu-latest
     steps:
@@ -36,7 +140,8 @@ jobs:
 
   release:
     name: Release
-    needs: verify
+    needs: [version, verify]
+    if: inputs.dry_run != true
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -58,18 +163,19 @@ jobs:
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
           images: ${{ env.IMAGE }}
-          # latest is applied by the flavor below, not here. The obvious
-          # incantation, type=raw,value=latest,enable={{is_default_branch}},
-          # is silently dead on a tag push: a tag is not a branch, so
-          # is_default_branch evaluates false and latest never moves.
+          # The version is passed in explicitly rather than derived from the
+          # ref, because it has to work on both triggers. type=semver reads
+          # github.ref, which is a tag on a tag push but a *branch* on a
+          # workflow_dispatch run -- so the semver patterns would quietly
+          # produce no version tags at all when releasing from the Actions tab,
+          # and the image would publish as latest only.
+          #
+          # type=raw with an explicit value behaves identically either way.
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-          # latest=auto moves latest for any semver tag that is not a
-          # pre-release, so v1.0.0 moves it and v1.1.0-rc1 does not.
-          flavor: |
-            latest=auto
+            type=raw,value=${{ needs.version.outputs.version }}
+            type=raw,value=${{ needs.version.outputs.major_minor }}
+            type=raw,value=${{ needs.version.outputs.major }}
+            type=raw,value=latest,enable=${{ needs.version.outputs.prerelease != 'true' }}
 
       - name: Build and push
         id: build
@@ -81,7 +187,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            VERSION=${{ github.ref_name }}
+            VERSION=${{ needs.version.outputs.tag }}
             COMMIT=${{ github.sha }}
             BUILD_DATE=${{ github.event.repository.updated_at }}
           sbom: true
@@ -111,10 +217,11 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
+          tag_name: ${{ needs.version.outputs.tag }}
           generate_release_notes: true
           body: |
             ```
-            docker pull ${{ env.IMAGE }}:${{ github.ref_name }}
+            docker pull ${{ env.IMAGE }}:${{ needs.version.outputs.tag }}
             ```
 
             Digest: `${{ steps.build.outputs.digest }}`

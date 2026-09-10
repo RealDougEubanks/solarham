@@ -173,6 +173,17 @@ pull requests for Go modules, GitHub Actions, and the base image. Dependabot
 repository: the file keeps dependencies current, the alerts say one has a known
 CVE.
 
+Patch and minor updates merge themselves once every required check has passed.
+That is not a weakening of review — the same five checks gate them as gate any
+human's pull request, and auto-merge waits for all of them. It removes the step
+where somebody clicks merge on a green patch bump they were always going to
+accept, which is the step most likely to be skipped for weeks.
+
+**Major updates are excluded and wait for a human.** A major version is where
+the upstream is saying it broke something, and a passing test suite is weaker
+evidence than usual there: the tests exercise the API we currently call, not
+the parts whose behaviour changed.
+
 ## Supply chain
 
 Released images carry provenance you can verify:

@@ -1,0 +1,60 @@
+name: Dependabot auto-merge
+
+# Turns Dependabot from something that opens pull requests into something that
+# actually keeps the project current.
+#
+# The safety here is not this workflow — it is branch protection. Auto-merge
+# only completes once Test, Lint, Image, Vulnerabilities and Analyze have all
+# passed on the pull request, exactly as they must for a human's. This workflow
+# does not bypass a single check; it removes the step where a human clicks
+# merge on a green patch bump they were always going to accept.
+#
+# Major bumps are deliberately excluded. A major version is where an upstream
+# says it has broken something, and a passing test suite is weaker evidence
+# than it looks for a dependency whose API changed. Those wait for a human.
+
+on: pull_request
+
+permissions:
+  contents: read
+
+jobs:
+  auto-merge:
+    # Deliberately pull_request, not pull_request_target. Workflows triggered
+    # by Dependabot get a read-only token by default, and the permissions block
+    # below is enough to raise it — so pull_request_target buys nothing here
+    # while carrying its well-known footgun, where checking out the pull
+    # request's code runs untrusted changes with access to secrets. This job
+    # never checks the code out at all.
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Read the update's metadata
+        id: meta
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable auto-merge for patch and minor updates
+        if: |
+          steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+          steps.meta.outputs.update-type == 'version-update:semver-minor'
+        run: gh pr merge --auto --merge "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Leave a major update for a human
+        if: steps.meta.outputs.update-type == 'version-update:semver-major'
+        run: |
+          gh pr comment "$PR_URL" --body \
+            "Not auto-merging: this is a **major** version bump of \`${{ steps.meta.outputs.dependency-names }}\`.
+
+          A major version is where the upstream is telling you it broke something. A green test suite is weaker evidence than usual here, because our tests exercise the API we currently call — not the parts whose behaviour changed. Worth reading the changelog before merging."
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
