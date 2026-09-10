@@ -169,6 +169,25 @@ Released images carry provenance you can verify:
 - The release workflow re-runs `go vet` and the race-detector test suite before
   publishing, so a tag cannot ship something that would have failed CI
 
+Every GitHub Action is pinned to a full commit SHA rather than a version tag,
+with the human-readable version kept in a trailing comment:
+
+```yaml
+uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+```
+
+A version tag is mutable. If an action's maintainer account is compromised, or
+a tag is simply re-pointed, `@v4` silently becomes different code — inside a
+workflow that holds `contents: write`, `id-token: write` and a Docker Hub
+token. That is not hypothetical: it is how the tj-actions/changed-files
+compromise reached thousands of repositories in March 2025. A SHA cannot be
+re-pointed.
+
+Dependabot reads the trailing comment and opens a pull request when a pinned
+action has a new release, so pinning does not mean going stale. Review those
+pull requests as you would any other dependency bump: check what changed
+between the two SHAs, not just that the version number went up.
+
 Verify a published image:
 
 ```bash
