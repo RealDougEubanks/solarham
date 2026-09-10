@@ -57,6 +57,36 @@ go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 
 4. Open a pull request against `main`.
 
+## What CI runs, and when
+
+A documentation-only change skips the test, lint, vulnerability, image and
+CodeQL jobs. They report as `skipped`, which branch protection accepts, so the
+pull request still merges — it just does not spend four minutes building a
+multi-architecture image to check a typo fix.
+
+Anything that can affect the artefact runs the full suite:
+
+| Changed | Full suite |
+|---|---|
+| `**/*.go`, `go.mod`, `go.sum` | yes |
+| `Dockerfile`, `.dockerignore` | yes |
+| `.golangci.yml` | yes |
+| `.github/workflows/**` | yes |
+| Markdown, `LICENSE`, `.env.example` | no |
+
+Workflow files are deliberately in the "yes" column even though they are not
+code. They are what *produces* the build, so a change to one that breaks the
+image needs to fail on the pull request rather than on the next release.
+
+Note that the filtering is a condition on each job, not a `paths-ignore:` on the
+workflow. A skipped workflow never reports its checks at all, so with required
+checks configured, path-filtering at the workflow level leaves every
+documentation pull request stuck Pending and unmergeable. This is a trap worth
+knowing about before adding another workflow.
+
+Releases are unaffected either way: the release workflow has no branch trigger,
+so nothing merged to `main` publishes anything until you tag or run it.
+
 ## Pull request checklist
 
 - [ ] `go test -race ./...` passes
