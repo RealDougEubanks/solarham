@@ -1,0 +1,72 @@
+#{
+# "HAPI": "2.0",
+# "parameters": [
+#  {
+#   "fill": "null",
+#   "length": 22,
+#   "name": "Time",
+#   "type": "isotime",
+#   "units": "UTC"
+#  },
+#  {
+#   "fill": "-999.9",
+#   "name": "B_x",
+#   "type": "double",
+#   "units": "nT"
+#  },
+#  {
+#   "fill": "-999.9",
+#   "name": "B_y",
+#   "type": "double",
+#   "units": "nT"
+#  },
+#  {
+#   "fill": "-999.9",
+#   "name": "B_z",
+#   "type": "double",
+#   "units": "nT"
+#  },
+#  {
+#   "fill": "-999.9",
+#   "name": "B_t",
+#   "type": "double",
+#   "units": "nT"
+#  },
+#  {
+#   "fill": "-999.9",
+#   "name": "Latitude",
+#   "type": "float",
+#   "units": "degrees"
+#  },
+#  {
+#   "fill": "-999.9",
+#   "name": "Longitude",
+#   "type": "float",
+#   "units": "degrees"
+#  },
+#  {
+#   "fill": "null",
+#   "name": "isPrimary",
+#   "type": "integer",
+#   "units": "null",
+#   "description": "Primary source flag (1 = primary, 0 = not primary)"
+#  },
+#  {
+#   "fill": "null",
+#   "name": "source",
+#   "type": "string",
+#   "units": "null",
+#   "description": "Data source identifier"
+#  }
+# ],
+# "startDate": "2000-04-01T00:00:00Z",
+# "stopDate": "2026-09-09T15:33:00Z",
+# "status": {
+#  "code": 1200,
+#  "message": "OK"
+# }
+#}
+2026-09-09T15:35:00Z,-3.12,2.81,-0.24,4.21,-3.26,137.97,0,ACE
+2026-09-09T15:36:00Z,-2.55,1.89,-0.59,3.23,-10.56,143.56,0,ACE
+2026-09-09T15:37:00Z,-2.38,1.7,0.11,2.93,2.12,144.52,0,ACE
+2026-09-09T15:38:00Z,-2.67,2.01,-0.29,3.35,-4.94,143.05,0,ACE

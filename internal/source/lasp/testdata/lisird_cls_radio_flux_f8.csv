@@ -1,0 +1,5 @@
+time (yyyy MM dd),absolute_f8 (solar flux unit (SFU)),absolute_f8_c (solar flux unit (SFU)),absolute_f8_p (solar flux unit (SFU)),absolute_f8_f,adjusted_f8 (solar flux unit (SFU)),adjusted_f8_c (solar flux unit (SFU)),adjusted_f8_p (solar flux unit (SFU)),adjusted_f8_f
+2026 9 5,106.0,106.0,4.1,1,107.8,107.8,4.1,1
+2026 9 6,108.0,108.0,4.1,1,109.7,109.7,4.1,1
+2026 9 7,106.0,106.0,4.0,1,107.6,107.6,4.1,1
+2026 9 8,106.0,106.0,4.0,1,107.6,107.6,4.1,1

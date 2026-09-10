@@ -26,8 +26,10 @@ type Store struct {
 }
 
 type entry struct {
-	sample   Sample
-	received time.Time
+	sample    Sample
+	received  time.Time
+	authority int
+	source    string
 }
 
 // NewStore returns a store that expires samples older than ttl.
@@ -61,15 +63,32 @@ func (s *Store) Replace(b Batch) {
 			continue
 		}
 		key := sample.Key()
-		// An out-of-order sample is discarded. Sources that return a window of
-		// history rather than a single point can emit an older observation
-		// after a newer one, and the newest reading is the one that should
-		// survive.
-		if existing, ok := s.entries[key]; ok && existing.sample.Time.After(sample.Time) {
+
+		if existing, ok := s.entries[key]; ok && !supersedes(existing, b, sample) {
 			continue
 		}
-		s.entries[key] = entry{sample: sample, received: received}
+		s.entries[key] = entry{
+			sample:    sample,
+			received:  received,
+			authority: b.Authority,
+			source:    b.Source,
+		}
 	}
+}
+
+// supersedes reports whether an incoming sample should replace the stored one.
+//
+// Authority is decided first: where two upstreams publish the same quantity and
+// one is better -- the observatory that took the measurement rather than an
+// agency republishing it -- the better one wins regardless of which polled more
+// recently. Otherwise the newer observation wins, which is what discards the
+// out-of-order samples that arrive when a source returns a window of history
+// rather than a single point.
+func supersedes(existing entry, b Batch, sample Sample) bool {
+	if b.Authority != existing.authority {
+		return b.Authority > existing.authority
+	}
+	return !existing.sample.Time.After(sample.Time)
 }
 
 // Samples returns every unexpired sample, ordered by metric name and then by

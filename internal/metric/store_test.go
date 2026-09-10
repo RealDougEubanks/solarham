@@ -274,3 +274,100 @@ func TestConcurrentReplaceAndReadDoNotRace(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// Several quantities here come from more than one upstream and they are not
+// equally good: the 10.7 cm flux from the observatory that measures it versus
+// an agency republishing a daily figure, Kp from GFZ as the definitive index
+// versus NOAA as a US-subnetwork estimate. The better source has to win
+// regardless of which happened to poll last.
+func TestAHigherAuthorityWinsEvenWithAnOlderObservation(t *testing.T) {
+	s, _ := newTestStore(t, time.Hour)
+	at := testTime()
+
+	// The weaker source polls second and carries a newer observation.
+	s.Replace(Batch{Source: "drao", Authority: 10,
+		Samples: []Sample{gauge(FluxSFU, 110, at)}})
+	s.Replace(Batch{Source: "swpc", Authority: 0,
+		Samples: []Sample{gauge(FluxSFU, 999, at.Add(time.Hour))}})
+
+	got := s.Samples()
+	if len(got) != 1 {
+		t.Fatalf("Samples() returned %d, want 1", len(got))
+	}
+	if got[0].Value != 110 {
+		t.Errorf("value = %v, want 110 from the authoritative source despite its older timestamp", got[0].Value)
+	}
+}
+
+func TestALowerAuthorityCannotDisplaceAHigherOne(t *testing.T) {
+	s, _ := newTestStore(t, time.Hour)
+	at := testTime()
+
+	// Arrive in the other order, to prove the rule is not about arrival.
+	s.Replace(Batch{Source: "swpc", Authority: 0,
+		Samples: []Sample{gauge(FluxSFU, 999, at.Add(time.Hour))}})
+	s.Replace(Batch{Source: "drao", Authority: 10,
+		Samples: []Sample{gauge(FluxSFU, 110, at)}})
+
+	if got := s.Samples()[0].Value; got != 110 {
+		t.Errorf("value = %v, want 110: authority must not depend on arrival order", got)
+	}
+}
+
+// Within one authority the newer observation still wins, which is what
+// discards the out-of-order samples a windowed source emits.
+func TestEqualAuthorityFallsBackToTheNewerObservation(t *testing.T) {
+	s, _ := newTestStore(t, time.Hour)
+	at := testTime()
+
+	s.Replace(Batch{Source: "a", Authority: 5, Samples: []Sample{gauge(FluxSFU, 110, at)}})
+	s.Replace(Batch{Source: "b", Authority: 5,
+		Samples: []Sample{gauge(FluxSFU, 125, at.Add(time.Minute))}})
+
+	if got := s.Samples()[0].Value; got != 125 {
+		t.Errorf("value = %v, want the newer 125 at equal authority", got)
+	}
+}
+
+func TestAnUnrankedSourceStillStoresItsOwnSeries(t *testing.T) {
+	// Most sources publish quantities nobody else touches, so a zero authority
+	// must behave normally rather than being treated as untrusted.
+	s, _ := newTestStore(t, time.Hour)
+
+	s.Replace(Batch{Source: "kiwisdr", Samples: []Sample{
+		{Desc: NoiseFloor, Labels: []string{"shack", "1800_10000"}, Value: -96, Time: testTime()},
+	}})
+
+	if s.Len() != 1 {
+		t.Errorf("Len() = %d, want an unranked source's sample stored", s.Len())
+	}
+}
+
+// A source that loses a collision must not have its other series suppressed --
+// SWPC loses the flux to DRAO but is the only source for the NOAA scales.
+func TestLosingOneSeriesDoesNotAffectAnother(t *testing.T) {
+	s, _ := newTestStore(t, time.Hour)
+	at := testTime()
+
+	s.Replace(Batch{Source: "drao", Authority: 10, Samples: []Sample{gauge(FluxSFU, 110, at)}})
+	s.Replace(Batch{Source: "swpc", Authority: 0, Samples: []Sample{
+		gauge(FluxSFU, 999, at.Add(time.Hour)),
+		gauge(GeomagneticStormScale, 2, at.Add(time.Hour)),
+	}})
+
+	var flux, scale float64
+	for _, sample := range s.Samples() {
+		switch sample.Desc {
+		case FluxSFU:
+			flux = sample.Value
+		case GeomagneticStormScale:
+			scale = sample.Value
+		}
+	}
+	if flux != 110 {
+		t.Errorf("flux = %v, want 110 from DRAO", flux)
+	}
+	if scale != 2 {
+		t.Errorf("storm scale = %v, want 2: losing the flux must not suppress SWPC's other series", scale)
+	}
+}

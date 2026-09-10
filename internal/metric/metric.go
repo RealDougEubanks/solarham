@@ -85,6 +85,26 @@ type Batch struct {
 	Source  string
 	Fetched time.Time
 	Samples []Sample
+
+	// Authority breaks ties when two sources publish the same series.
+	//
+	// Several quantities here are available from more than one upstream, and
+	// they are not equally good. The 10.7 cm flux comes both from NOAA, which
+	// republishes a single daily value, and from DRAO Penticton, the
+	// observatory whose instrument actually makes the measurement three times
+	// a day. Kp comes from NOAA as a US-subnetwork estimate and from GFZ
+	// Potsdam as the definitive index. In each case one answer is better.
+	//
+	// Without an explicit ordering the winner would be whichever source
+	// happened to poll last with a newer upstream timestamp, so the series
+	// would flap between two subtly different numbers for no visible reason.
+	// A higher Authority wins outright; equal authorities fall back to the
+	// newer upstream observation.
+	//
+	// The scheduler stamps this from a table declared in main, so the ordering
+	// lives in one place next to its reasoning rather than being implied by
+	// whichever source was written first.
+	Authority int
 }
 
 // Len reports how many samples the batch carries.

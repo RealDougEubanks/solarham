@@ -1,0 +1,45 @@
+{
+  "type": "FeatureCollection",
+  "time_tag": "2026-09-09T15:15:00Z",
+  "cadence": 10,
+  "metadata": {
+    "variables": {
+      "tec": {"units": "TECU", "min": 0.0, "max": 300.0},
+      "hmF2": {"units": "km", "min": 200.0, "max": 600.0},
+      "NmF2": {"units": "el/m^3", "min": 0.0, "max": 1000000000000000.0}
+    }
+  },
+  "features": [
+    {"type": "Feature",
+     "geometry": {"type": "Point", "coordinates": [-100.0, -75.0]},
+     "properties": {"tec": 10.0, "anomaly": 1.0, "hmF2": 300.0, "NmF2": 100000000000.0, "quality_flag": 3}},
+
+    {"type": "Feature",
+     "geometry": {"type": "Point", "coordinates": [20.0, -45.0]},
+     "properties": {"tec": 20.0, "anomaly": 1.1, "hmF2": 310.0, "NmF2": 200000000000.0, "quality_flag": 0}},
+
+    {"type": "Feature",
+     "geometry": {"type": "Point", "coordinates": [20.0, -15.0]},
+     "properties": {"tec": 30.0, "anomaly": 1.2, "hmF2": 320.0, "NmF2": 300000000000.0, "quality_flag": 5}},
+
+    {"type": "Feature",
+     "geometry": {"type": "Point", "coordinates": [20.0, 15.0]},
+     "properties": {"tec": 40.0, "anomaly": 0.9, "hmF2": 330.0, "NmF2": 400000000000.0, "quality_flag": 2}},
+
+    {"type": "Feature",
+     "geometry": {"type": "Point", "coordinates": [25.0, 15.0]},
+     "properties": {"tec": 44.0, "anomaly": 0.8, "hmF2": 335.0, "NmF2": 440000000000.0, "quality_flag": 1}},
+
+    {"type": "Feature",
+     "geometry": {"type": "Point", "coordinates": [20.0, 45.0]},
+     "properties": {"tec": 50.0, "anomaly": 1.3, "hmF2": 340.0, "NmF2": 500000000000.0, "quality_flag": 4}},
+
+    {"type": "Feature",
+     "geometry": {"type": "Point", "coordinates": [20.0, 75.0]},
+     "properties": {"tec": 60.0, "anomaly": 1.4, "hmF2": 350.0, "NmF2": 600000000000.0, "quality_flag": 1}},
+
+    {"type": "Feature",
+     "geometry": {"type": "Point", "coordinates": [178.0, 75.0]},
+     "properties": {"tec": 70.0, "anomaly": 1.5, "hmF2": 360.0, "NmF2": 700000000000.0, "quality_flag": 1}}
+  ]
+}

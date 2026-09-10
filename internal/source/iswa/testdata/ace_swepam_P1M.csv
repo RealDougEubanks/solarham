@@ -1,0 +1,55 @@
+#{
+# "HAPI": "2.0",
+# "parameters": [
+#  {
+#   "fill": "null",
+#   "length": 22,
+#   "name": "Time",
+#   "type": "isotime",
+#   "units": "UTC"
+#  },
+#  {
+#   "fill": "-9999",
+#   "name": "ProtonDensity",
+#   "type": "double",
+#   "units": "p/cc"
+#  },
+#  {
+#   "fill": "-9999",
+#   "name": "IonTemperature",
+#   "type": "double",
+#   "units": "K"
+#  },
+#  {
+#   "fill": "-9999",
+#   "name": "BulkSpeed",
+#   "type": "double",
+#   "units": "km/s"
+#  },
+#  {
+#   "fill": "null",
+#   "name": "isPrimary",
+#   "type": "integer",
+#   "units": "null",
+#   "description": "Primary source flag (1 = primary, 0 = not primary)"
+#  },
+#  {
+#   "fill": "null",
+#   "name": "source",
+#   "type": "string",
+#   "units": "null",
+#   "description": "Data source identifier"
+#  }
+# ],
+# "startDate": "2000-04-01T00:00:00Z",
+# "stopDate": "2026-09-09T15:35:00Z",
+# "status": {
+#  "code": 1200,
+#  "message": "OK"
+# }
+#}
+2026-09-09T15:35:00Z,2.62,106407,424.83,0,ACE
+2026-09-09T15:36:00Z,2.45,129759,423.94,0,ACE
+2026-09-09T15:37:00Z,2.23,133910,426.22,0,ACE
+2026-09-09T15:38:00Z,2.25,125340,422.96,0,ACE
+2026-09-09T15:39:00Z,1.7,127319,416.8,0,ACE

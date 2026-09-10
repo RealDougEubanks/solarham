@@ -1,0 +1,39 @@
+{
+  "info": {
+    "description": "Finnish Meteorological Institute R-index (auroral activity index) latest values. The values are calculated for the time interval [time - 10 m, time]. Updates every five minutes.",
+    "copyright": "Copyright Finnish Meteorological Institute. Licensed Under Creative Commons BY 4.0  (https://creativecommons.org/licenses/by/4.0/)",
+    "encoding": "utf-8"
+  },
+  "data": {
+    "KEV": {
+      "Time": "2026-09-09 15:50:00+00:00",
+      "R-index": 126,
+      "Geographic latitude": 69.76,
+      "Geographic longitude": 27.01,
+      "Limit value lower": 55,
+      "Limit value higher": 165,
+      "Probability of auroras": "Medium probability of auroras",
+      "Station": "Kevo"
+    },
+    "KIL": {
+      "Time": "2026-09-07 11:55:00+00:00",
+      "R-index": 154,
+      "Geographic latitude": 69.05,
+      "Geographic longitude": 20.79,
+      "Limit value lower": 61,
+      "Limit value higher": 210,
+      "Probability of auroras": "Medium probability of auroras",
+      "Station": "Kilpisjärvi"
+    },
+    "PEL": {
+      "Time": "2026-09-07 11:55:00+00:00",
+      "R-index": null,
+      "Geographic latitude": 66.9,
+      "Geographic longitude": 24.08,
+      "Limit value lower": 73,
+      "Limit value higher": 285,
+      "Probability of auroras": "Missing last observation",
+      "Station": "Pello"
+    }
+  }
+}

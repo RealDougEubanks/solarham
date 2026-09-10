@@ -532,11 +532,24 @@ func pointTags(source string, s metric.Sample) ([]tag, bool) {
 	if s.Desc.Name == "" || containsNewline(s.Desc.Name) {
 		return nil, false
 	}
-	tags = append(tags, tag{key: "metric", value: s.Desc.Name})
+
+	// The two synthetic tags are only added when the descriptor has not already
+	// declared a label of that name.
+	//
+	// Line protocol rejects a point carrying the same tag key twice, and it
+	// rejects the whole batch rather than the one point. Several descriptors
+	// legitimately declare a "source" label -- source_data_age_seconds names
+	// the feed it measures -- so blindly appending the batch's source produced
+	// "duplicate tags" and cost every other sample in the request. Where the
+	// descriptor declares it, the descriptor's value is the more specific one
+	// and wins.
+	if !declaresLabel(s.Desc, "metric") {
+		tags = append(tags, tag{key: "metric", value: s.Desc.Name})
+	}
 
 	// A batch with no source still describes real observations, so the tag is
 	// omitted rather than the sample dropped.
-	if source != "" && !containsNewline(source) {
+	if source != "" && !containsNewline(source) && !declaresLabel(s.Desc, "source") {
 		tags = append(tags, tag{key: "source", value: source})
 	}
 
@@ -599,3 +612,17 @@ func escapeStringField(s string) string { return stringFieldEscaper.Replace(s) }
 // quoteStringField renders a string field value ready to place after an equals
 // sign.
 func quoteStringField(s string) string { return `"` + escapeStringField(s) + `"` }
+
+// declaresLabel reports whether a descriptor already carries a label of this
+// name, so a synthetic tag does not collide with it.
+func declaresLabel(d *metric.Descriptor, name string) bool {
+	if d == nil {
+		return false
+	}
+	for _, l := range d.Labels {
+		if l == name {
+			return true
+		}
+	}
+	return false
+}

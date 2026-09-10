@@ -41,6 +41,14 @@ type Scheduler struct {
 	// Tests set it to zero; nothing else should.
 	startJitter time.Duration
 
+	// clock is injectable so schedule arithmetic can be tested without
+	// waiting for a wall-clock publication slot.
+	clock func() time.Time
+
+	// authority ranks sources against each other when two publish the same
+	// series. See metric.Batch.Authority.
+	authority map[string]int
+
 	mu    sync.RWMutex
 	state map[string]*sourceState
 }
@@ -64,6 +72,18 @@ type sourceState struct {
 	backoff time.Duration
 }
 
+// SetAuthority ranks sources for collision resolution.
+//
+// Several quantities are published by more than one upstream and they are not
+// equally good, so the ordering has to be declared somewhere. It lives in main
+// next to its reasoning rather than being implied by which source happens to
+// poll last.
+func (s *Scheduler) SetAuthority(authority map[string]int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.authority = authority
+}
+
 // NewScheduler returns a scheduler over the given sources.
 func NewScheduler(sources []Source, publisher Publisher, log *slog.Logger, observer Observer) *Scheduler {
 	if log == nil {
@@ -75,6 +95,7 @@ func NewScheduler(sources []Source, publisher Publisher, log *slog.Logger, obser
 		log:         log,
 		observer:    observer,
 		startJitter: DefaultStartJitter,
+		clock:       time.Now,
 		state:       make(map[string]*sourceState, len(sources)),
 	}
 	for _, src := range sources {
@@ -118,13 +139,18 @@ func (s *Scheduler) Run(ctx context.Context) {
 
 // runOne is the poll loop for a single source.
 func (s *Scheduler) runOne(ctx context.Context, src Source) {
-	interval := src.Interval()
-	if interval <= 0 {
+	if src.Interval() <= 0 {
 		s.log.Error("source has a non-positive interval and will not be polled",
-			"source", src.Name(), "interval", interval)
+			"source", src.Name(), "interval", src.Interval())
 		return
 	}
 
+	sched := scheduleFor(src)
+
+	// The first poll happens almost immediately regardless of schedule, so the
+	// exporter has data to serve without waiting for the next publication slot
+	// — which for a daily source would mean up to 24 hours of empty metrics
+	// after every container start.
 	timer := time.NewTimer(s.firstDelay())
 	defer timer.Stop()
 
@@ -136,10 +162,7 @@ func (s *Scheduler) runOne(ctx context.Context, src Source) {
 		}
 
 		s.pollOnce(ctx, src)
-
-		// The next delay is the source's interval plus whatever backoff its
-		// recent failures have earned.
-		timer.Reset(s.nextDelay(src, interval))
+		timer.Reset(s.nextDelay(src, sched))
 	}
 }
 
@@ -155,7 +178,11 @@ func (s *Scheduler) firstDelay() time.Duration {
 }
 
 // nextDelay returns how long to wait before polling this source again.
-func (s *Scheduler) nextDelay(src Source, interval time.Duration) time.Duration {
+//
+// The schedule decides the base time; consecutive failures add backoff on top.
+// A scheduled source that fails therefore slips past its slot rather than
+// hammering a publisher that is having a bad day.
+func (s *Scheduler) nextDelay(src Source, sched Schedule) time.Duration {
 	s.mu.RLock()
 	st := s.state[src.Name()]
 	backoff := time.Duration(0)
@@ -163,7 +190,18 @@ func (s *Scheduler) nextDelay(src Source, interval time.Duration) time.Duration 
 		backoff = st.backoff
 	}
 	s.mu.RUnlock()
-	return interval + backoff
+
+	now := s.clock()
+	delay := sched.NextAfter(now).Sub(now) + backoff
+
+	// A schedule that returns a time already past would spin this loop at full
+	// speed. This is a guard against that bug, deliberately far below any real
+	// poll interval — configuration already floors those at a minute — so it
+	// never silently slows a legitimate schedule.
+	if delay <= 0 {
+		delay = 50 * time.Millisecond
+	}
+	return delay
 }
 
 // pollOnce performs one poll, containing its failures.
@@ -215,8 +253,18 @@ func (s *Scheduler) pollOnce(ctx context.Context, src Source) {
 		"source", src.Name(), "samples", batch.Len(), "duration", duration)
 
 	if batch.Len() > 0 && s.publisher != nil {
+		batch.Authority = s.authorityFor(src.Name())
 		s.publisher.Publish(ctx, batch)
 	}
+}
+
+// authorityFor returns a source's collision rank, defaulting to zero for a
+// source nobody has ranked -- which is correct for the great majority, since
+// most publish quantities no other source touches.
+func (s *Scheduler) authorityFor(name string) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.authority[name]
 }
 
 // record updates the source's state for the health endpoints and adjusts its
@@ -248,7 +296,7 @@ func (s *Scheduler) record(src Source, batch metric.Batch, _ time.Duration, err 
 	st.lastFailure = time.Now()
 	st.lastError = err.Error()
 	st.failures++
-	st.backoff = nextBackoff(st.backoff, src.Interval())
+	st.backoff = nextBackoff(st.backoff, scheduleFor(src).Interval())
 }
 
 // nextBackoff doubles the current backoff, starting at the source's interval
@@ -280,10 +328,11 @@ func (s *Scheduler) Statuses() []Status {
 		if st == nil {
 			st = &sourceState{}
 		}
-		staleAfter := staleAfter(src.Interval())
+		sched := scheduleFor(src)
+		staleAfter := staleAfter(sched.Interval())
 		out = append(out, Status{
 			Name:        src.Name(),
-			Interval:    src.Interval().String(),
+			Interval:    sched.String(),
 			LastSuccess: st.lastSuccess,
 			LastFailure: st.lastFailure,
 			LastError:   st.lastError,

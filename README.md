@@ -72,11 +72,83 @@ makes outbound HTTPS requests and serves one port.
 
 ## Sources
 
-| Source | Default | Interval | Provides |
+Twenty-one sources. Cadence is matched to how often each upstream actually
+publishes: a document rewritten once a day is fetched once a day, not every five
+minutes.
+
+| Source | Default | Cadence | Provides |
 |---|---|---|---|
-| `swpc` | on | 1 m / 5 m / 1 h | solar wind speed and density, Bt/Bz, Kp, A, F10.7, sunspots, X-ray class, particle flux, auroral power, NOAA G/S/R scales, Dst, alerts, D-RAP (opt-in) |
-| `hamqsl` | on | 1 h | HF band conditions, VHF conditions, signal/noise, geomagnetic field wording |
-| `kc2g` | **off** | 15 m | foF2, MUF, M(3000)F2, effective SSN and flux |
+| `swpc` | on | 1 m / 5 m / 1 h | X-ray class, GOES particle flux, NOAA G/S/R scales, alerts, sunspots, auroral power, D-RAP (opt-in) |
+| `swpc-forecast` | on | 4×/day | **flare probability by class at 1/2/3 days**, proton-event probability, polar cap absorption, active regions |
+| `glotec` | on | 10 m | total electron content, hmF2, NmF2, and a quiet-time TEC anomaly |
+| `iswa` | on | 1 m | real-time solar wind and IMF from L1, plus Dst — the live replacement for the NOAA products that were retired |
+| `donki` | on | 30 m | CME speed, half-angle and source location; flare event counts |
+| `gfz` | on | 10 m | **the definitive Kp, plus Hp30 at half-hourly resolution** |
+| `drao` | on | **3×/day** | the 10.7 cm flux from the observatory that measures it |
+| `lasp` | on | 1 m / 3 h | EUV irradiance, **the heliographic centroid of EUV emission**, TSI, Mg II, Lyman-α, multi-frequency radio flux |
+| `usgs-geomag` | on | 5 m | ground magnetometer vectors and field rate-of-change |
+| `fmi` | on | 5 m | regional auroral activity index, Finland |
+| `hamqsl` | on | 1 h | HF and VHF band conditions, signal/noise, geomagnetic field wording |
+| `lotw` | on | **1×/day** | how many operators are actually on the air |
+| `pota` | on | 60 s | current portable activations by band and mode |
+| `celestrak` | on | **2×/day** | orbital element-set freshness (not pass predictions — see below) |
+| `kiwisdr` | off | 30 m | **your own measured HF noise floor in dBm** |
+| `kc2g` | off | 15 m | foF2, MUF, **measured sporadic-E**, ionosonde TEC |
+| `wspr-live` | off | 5 m | observed propagation per band: spots, distinct stations, SNR, distance |
+| `pskreporter` | off | 5 m | band activity score by grid |
+| `nmdb` | off | 10 m | neutron monitor counts — galactic cosmic rays and Forbush decreases |
+| `intermagnet` | off | 5 m | per-observatory magnetometer vectors |
+| `silso` | off | 6 h | the International Sunspot Number and its smoothed series |
+
+The six sources off by default carry non-commercial or otherwise restricted
+licences; `kiwisdr` is off because it needs a receiver address. Enabling a
+restricted source logs its terms at startup.
+
+### Why some sources are polled a few times a day
+
+A fixed interval is the wrong model for most of these. DRAO measures the solar
+flux three times per UT day at 17:00, 20:00 and 23:00; the ARRL activity file is
+rebuilt about weekly; NOAA regenerates its daily indices once, around 02:25 UT.
+Polling any of them every few minutes fetches an identical document hundreds of
+times to learn nothing.
+
+Sources therefore declare when their upstream publishes and are polled shortly
+after, with a lag — because a stated time is when a publisher starts writing,
+not when the file becomes readable.
+
+Request spacing is enforced **per host, shared across every source**, so
+enabling another NOAA source costs nothing extra in request rate. A per-source
+limiter would let ten sources each politely make one request per second to one
+host and collectively make ten.
+
+### When two sources publish the same thing
+
+Eight quantities are available from more than one upstream, and they are not
+equally good. Precedence is declared explicitly rather than left to whichever
+source polled last:
+
+| Series | Winner | Why |
+|---|---|---|
+| 10.7 cm flux | `drao` | operates the instrument; NOAA republishes a daily figure |
+| Kp, ap, Hp30 | `gfz` | defines the index; NOAA's is a US-subnetwork estimate |
+| solar wind, Dst | `iswa` | exposes the primary-spacecraft flag, so it publishes whichever monitor is current |
+| BOU and FRD field | `usgs-geomag` | operates those two observatories; INTERMAGNET relays them |
+
+Losing a contest costs a source that one series and nothing else. The table and
+its reasoning live in `cmd/solarham-exporter/authority.go`.
+
+### What is deliberately not published
+
+**Satellite pass predictions.** A countdown to the next pass is a computed
+function of time, not an observation: wrong between scrapes, quantised to the
+scrape interval, and it reconstructs badly in any range query. Element-set
+*age* is exported instead, because stale elements are a real operational
+problem worth alerting on.
+
+**Hosted propagation predictions.** P.533 and VOACAP are monthly-median models
+driven by a *smoothed* sunspot number, so they step only at month boundaries — a
+live run reported an SSN of 77 at the same moment the effective SSN was 44.7.
+Ship the inputs and compute predictions at query time.
 
 ### Why hamqsl is polled hourly
 

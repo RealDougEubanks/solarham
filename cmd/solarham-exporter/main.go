@@ -17,6 +17,7 @@ import (
 
 	"github.com/RealDougEubanks/solarham/internal/config"
 	"github.com/RealDougEubanks/solarham/internal/httpserver"
+	"github.com/RealDougEubanks/solarham/internal/httpx"
 	"github.com/RealDougEubanks/solarham/internal/metric"
 	"github.com/RealDougEubanks/solarham/internal/sink"
 	"github.com/RealDougEubanks/solarham/internal/sink/influxv1"
@@ -25,9 +26,27 @@ import (
 	"github.com/RealDougEubanks/solarham/internal/sink/otlpmetrics"
 	"github.com/RealDougEubanks/solarham/internal/sink/prommetrics"
 	"github.com/RealDougEubanks/solarham/internal/source"
+	"github.com/RealDougEubanks/solarham/internal/source/celestrak"
+	"github.com/RealDougEubanks/solarham/internal/source/donki"
+	"github.com/RealDougEubanks/solarham/internal/source/drao"
+	"github.com/RealDougEubanks/solarham/internal/source/fmi"
+	"github.com/RealDougEubanks/solarham/internal/source/gfz"
+	"github.com/RealDougEubanks/solarham/internal/source/glotec"
 	"github.com/RealDougEubanks/solarham/internal/source/hamqsl"
+	"github.com/RealDougEubanks/solarham/internal/source/intermagnet"
+	"github.com/RealDougEubanks/solarham/internal/source/iswa"
 	"github.com/RealDougEubanks/solarham/internal/source/kc2g"
+	"github.com/RealDougEubanks/solarham/internal/source/kiwisdr"
+	"github.com/RealDougEubanks/solarham/internal/source/lasp"
+	"github.com/RealDougEubanks/solarham/internal/source/lotw"
+	"github.com/RealDougEubanks/solarham/internal/source/nmdb"
+	"github.com/RealDougEubanks/solarham/internal/source/pota"
+	"github.com/RealDougEubanks/solarham/internal/source/pskreporter"
+	"github.com/RealDougEubanks/solarham/internal/source/silso"
 	"github.com/RealDougEubanks/solarham/internal/source/swpc"
+	"github.com/RealDougEubanks/solarham/internal/source/swpcforecast"
+	"github.com/RealDougEubanks/solarham/internal/source/usgsgeomag"
+	"github.com/RealDougEubanks/solarham/internal/source/wsprlive"
 )
 
 // Stamped at build time by the Dockerfile's ldflags.
@@ -36,6 +55,14 @@ var (
 	commit    = "unknown"
 	buildDate = "unknown"
 )
+
+// httpClientTimeout bounds every individual request made by any source.
+//
+// It has to clear the slowest legitimate fetch rather than the typical one:
+// the ARRL activity file is six megabytes and DRAO's flux table is two, so a
+// tighter bound would cut off the sources that need the most time. Individual
+// sources narrow this with their own context deadline where they care.
+const httpClientTimeout = 2 * time.Minute
 
 // Exit codes. A clean SIGTERM exits zero: exiting non-zero after a deliberate
 // stop makes a supervisor restart a container that was stopped on purpose.
@@ -81,7 +108,19 @@ func run() int {
 		log.Warn(note)
 	}
 
-	sources, err := buildSources(cfg, log)
+	// One HTTP client, shared by every source. The rate limiting inside it is
+	// per host and shared, which is the point: a per-source limiter would let
+	// ten sources each politely make one request per second to one host and
+	// collectively make ten.
+	client := httpx.NewDefault(httpClientTimeout, log)
+
+	// Restricted-licence sources are named at startup so the obligation is
+	// visible in the logs rather than only in a config file nobody re-reads.
+	for _, note := range cfg.RestrictedSources() {
+		log.Info("restricted-licence source enabled", "terms", note)
+	}
+
+	sources, err := buildSources(cfg, client, log)
 	if err != nil {
 		log.Error("failed to build sources", "error", err)
 		return exitFailure
@@ -106,6 +145,7 @@ func run() int {
 	}()
 
 	scheduler := source.NewScheduler(sources, set, log, sourceObserver(prom))
+	scheduler.SetAuthority(sourceAuthority)
 
 	srv, err := httpserver.New(cfg.HTTP, httpserver.Deps{
 		MetricsHandler: metricsHandler(prom),
@@ -181,7 +221,7 @@ func newLogger(cfg *config.Config) *slog.Logger {
 //
 // A construction error is fatal, because it means a setting is wrong and no
 // amount of retrying will fix it. A poll error never is.
-func buildSources(cfg *config.Config, log *slog.Logger) ([]source.Source, error) {
+func buildSources(cfg *config.Config, client *httpx.Client, log *slog.Logger) ([]source.Source, error) {
 	var sources []source.Source
 
 	if cfg.Hamqsl.Enabled {
@@ -204,6 +244,158 @@ func buildSources(cfg *config.Config, log *slog.Logger) ([]source.Source, error)
 		s, err := kc2g.New(cfg.KC2G, log)
 		if err != nil {
 			return nil, fmt.Errorf("kc2g: %w", err)
+		}
+		sources = append(sources, s)
+	}
+
+	if cfg.SolarProbabilities.Enabled {
+		s, err := swpcforecast.New(cfg.SolarProbabilities, client, log)
+		if err != nil {
+			return nil, fmt.Errorf("swpc-forecast: %w", err)
+		}
+		sources = append(sources, s)
+	}
+
+	if cfg.GloTEC.Enabled {
+		s, err := glotec.New(cfg.GloTEC, client, log)
+		if err != nil {
+			return nil, fmt.Errorf("glotec: %w", err)
+		}
+		sources = append(sources, s)
+	}
+
+	if cfg.ISWA.Enabled {
+		s, err := iswa.New(cfg.ISWA, client, log)
+		if err != nil {
+			return nil, fmt.Errorf("iswa: %w", err)
+		}
+		sources = append(sources, s)
+	}
+
+	if cfg.DONKI.Enabled {
+		s, err := donki.New(cfg.DONKI, client, log)
+		if err != nil {
+			return nil, fmt.Errorf("donki: %w", err)
+		}
+		sources = append(sources, s)
+	}
+
+	if cfg.USGSGeomag.Enabled {
+		s, err := usgsgeomag.New(cfg.USGSGeomag, client, log)
+		if err != nil {
+			return nil, fmt.Errorf("usgs-geomag: %w", err)
+		}
+		sources = append(sources, s)
+	}
+
+	if cfg.GFZ.Enabled {
+		s, err := gfz.New(cfg.GFZ, client, log)
+		if err != nil {
+			return nil, fmt.Errorf("gfz: %w", err)
+		}
+		sources = append(sources, s)
+	}
+
+	if cfg.DRAO.Enabled {
+		s, err := drao.New(cfg.DRAO, client, log)
+		if err != nil {
+			return nil, fmt.Errorf("drao: %w", err)
+		}
+		sources = append(sources, s)
+	}
+
+	if cfg.LASP.Enabled {
+		s, err := lasp.New(cfg.LASP, client, log)
+		if err != nil {
+			return nil, fmt.Errorf("lasp: %w", err)
+		}
+		// LISIRD carries two datasets that would write the same 10.7 cm flux
+		// series DRAO owns. They are requested only when DRAO is switched off,
+		// which avoids the collision rather than arbitrating it -- and saves
+		// two requests.
+		if !f107Owner(cfg.DRAO.Enabled) {
+			s.EnableF107Datasets()
+			log.Debug("lasp will publish the 10.7 cm flux because drao is disabled")
+		}
+		sources = append(sources, s)
+	}
+
+	if cfg.FMI.Enabled {
+		s, err := fmi.New(cfg.FMI, client, log)
+		if err != nil {
+			return nil, fmt.Errorf("fmi: %w", err)
+		}
+		sources = append(sources, s)
+	}
+
+	if cfg.KiwiSDR.Enabled {
+		s, err := kiwisdr.New(cfg.KiwiSDR, client, log)
+		if err != nil {
+			return nil, fmt.Errorf("kiwisdr: %w", err)
+		}
+		sources = append(sources, s)
+	}
+
+	if cfg.LoTW.Enabled {
+		s, err := lotw.New(cfg.LoTW, client, log)
+		if err != nil {
+			return nil, fmt.Errorf("lotw: %w", err)
+		}
+		sources = append(sources, s)
+	}
+
+	if cfg.POTA.Enabled {
+		s, err := pota.New(cfg.POTA, client, log)
+		if err != nil {
+			return nil, fmt.Errorf("pota: %w", err)
+		}
+		sources = append(sources, s)
+	}
+
+	if cfg.Celestrak.Enabled {
+		s, err := celestrak.New(cfg.Celestrak, client, log)
+		if err != nil {
+			return nil, fmt.Errorf("celestrak: %w", err)
+		}
+		sources = append(sources, s)
+	}
+
+	if cfg.WSPRLive.Enabled {
+		s, err := wsprlive.New(cfg.WSPRLive, client, log)
+		if err != nil {
+			return nil, fmt.Errorf("wspr-live: %w", err)
+		}
+		sources = append(sources, s)
+	}
+
+	if cfg.PSKReporter.Enabled {
+		s, err := pskreporter.New(cfg.PSKReporter, client, log)
+		if err != nil {
+			return nil, fmt.Errorf("pskreporter: %w", err)
+		}
+		sources = append(sources, s)
+	}
+
+	if cfg.NMDB.Enabled {
+		s, err := nmdb.New(cfg.NMDB, client, log)
+		if err != nil {
+			return nil, fmt.Errorf("nmdb: %w", err)
+		}
+		sources = append(sources, s)
+	}
+
+	if cfg.INTERMAGNET.Enabled {
+		s, err := intermagnet.New(cfg.INTERMAGNET, client, log)
+		if err != nil {
+			return nil, fmt.Errorf("intermagnet: %w", err)
+		}
+		sources = append(sources, s)
+	}
+
+	if cfg.SILSO.Enabled {
+		s, err := silso.New(cfg.SILSO, client, log)
+		if err != nil {
+			return nil, fmt.Errorf("silso: %w", err)
 		}
 		sources = append(sources, s)
 	}

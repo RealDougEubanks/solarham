@@ -75,6 +75,7 @@ func load(args []string, lookupEnv func(string) (string, bool), readFile func(st
 	loadHamqsl(l, cfg)
 	loadSWPC(l, cfg)
 	loadKC2G(l, cfg)
+	loadSources(l, cfg)
 
 	loadPrometheus(l, cfg)
 	loadInfluxV1(l, cfg)
@@ -227,9 +228,7 @@ func loadHamqsl(l *loader, cfg *Config) {
 		Timeout:  l.Duration("HAMQSL_TIMEOUT", 15*time.Second, time.Second, 2*time.Minute),
 		Retries:  l.Int("HAMQSL_RETRIES", 2, 0, 10),
 	}
-	if cfg.Hamqsl.Enabled {
-		l.require("hamqsl", "HAMQSL_URL", cfg.Hamqsl.URL)
-	}
+	requireURL(l, cfg.Hamqsl.Enabled, "hamqsl", "HAMQSL_URL", cfg.Hamqsl.URL)
 }
 
 func loadSWPC(l *loader, cfg *Config) {
@@ -247,9 +246,7 @@ func loadSWPC(l *loader, cfg *Config) {
 		DRAPEnabled:  l.Bool("SWPC_DRAP_ENABLED", false),
 		DRAPGridStep: l.Int("SWPC_DRAP_GRID_STEP", 10, 1, 90),
 	}
-	if cfg.SWPC.Enabled {
-		l.require("SWPC", "SWPC_BASE_URL", cfg.SWPC.BaseURL)
-	}
+	requireURL(l, cfg.SWPC.Enabled, "SWPC", "SWPC_BASE_URL", cfg.SWPC.BaseURL)
 }
 
 // loadKC2G reads the prop.kc2g.com source.
@@ -270,9 +267,7 @@ func loadKC2G(l *loader, cfg *Config) {
 		Stations:         l.StringSlice("KC2G_STATIONS"),
 		EffectiveIndices: l.Bool("KC2G_EFFECTIVE_INDICES", true),
 	}
-	if cfg.KC2G.Enabled {
-		l.require("kc2g", "KC2G_BASE_URL", cfg.KC2G.BaseURL)
-	}
+	requireURL(l, cfg.KC2G.Enabled, "kc2g", "KC2G_BASE_URL", cfg.KC2G.BaseURL)
 }
 
 func loadPrometheus(l *loader, cfg *Config) {
@@ -392,6 +387,8 @@ func validate(l *loader, cfg *Config) {
 		"SWPC_TIMEOUT", cfg.SWPC.Timeout, "SWPC_FAST_INTERVAL", cfg.SWPC.FastInterval)
 	requireTimeoutBelowInterval(l, cfg.KC2G.Enabled,
 		"KC2G_TIMEOUT", cfg.KC2G.Timeout, "KC2G_INTERVAL", cfg.KC2G.Interval)
+
+	validateSources(l, cfg)
 }
 
 // validateInfluxV2Org enforces exactly one of org or orgID.

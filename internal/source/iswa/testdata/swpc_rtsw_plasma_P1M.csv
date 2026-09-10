@@ -1,0 +1,55 @@
+#{
+# "HAPI": "2.0",
+# "parameters": [
+#  {
+#   "fill": "null",
+#   "length": 22,
+#   "name": "Time",
+#   "type": "isotime",
+#   "units": "UTC"
+#  },
+#  {
+#   "fill": "-9999",
+#   "name": "ProtonDensity",
+#   "type": "double",
+#   "units": "p/cc"
+#  },
+#  {
+#   "fill": "-9999",
+#   "name": "BulkSpeed",
+#   "type": "double",
+#   "units": "km/s"
+#  },
+#  {
+#   "fill": "-9999",
+#   "name": "IonTemperature",
+#   "type": "double",
+#   "units": "K"
+#  },
+#  {
+#   "fill": "null",
+#   "name": "isPrimary",
+#   "type": "integer",
+#   "units": "null",
+#   "description": "Primary source flag (1 = primary, 0 = not primary)"
+#  },
+#  {
+#   "fill": "null",
+#   "name": "source",
+#   "type": "string",
+#   "units": "null",
+#   "description": "Data source identifier"
+#  }
+# ],
+# "startDate": "2000-04-01T00:00:00Z",
+# "stopDate": "2026-09-09T15:33:00Z",
+# "status": {
+#  "code": 1200,
+#  "message": "OK"
+# }
+#}
+2026-09-09T15:35:00Z,5.03,455.6,175444,1,SOLAR1
+2026-09-09T15:36:00Z,5.56,459.5,180028,1,SOLAR1
+2026-09-09T15:37:00Z,5.15,454.3,175288,1,SOLAR1
+2026-09-09T15:38:00Z,6.08,445.4,178291,1,SOLAR1
+2026-09-09T15:39:00Z,5.16,448.2,170063,1,SOLAR1

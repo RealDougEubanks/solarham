@@ -522,10 +522,10 @@ func TestASinkAndASourceAreBothRequired(t *testing.T) {
 	_, err := loadEnv(t, map[string]string{"PROMETHEUS_ENABLED": "false"}, nil)
 	assertProblem(t, err, "no sinks are enabled", EnvPrefix+"PROMETHEUS_ENABLED=true")
 
-	_, err = loadEnv(t, map[string]string{
-		"HAMQSL_ENABLED": "false",
-		"SWPC_ENABLED":   "false",
-	}, nil)
+	// Every source has to be off for this to bite, and there are now twenty of
+	// them, so the list lives next to the defaults table it has to stay in step
+	// with.
+	_, err = loadEnv(t, allSourcesOff(nil), nil)
 	assertProblem(t, err, "no sources are enabled", EnvPrefix+"SWPC_ENABLED=true")
 }
 

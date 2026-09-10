@@ -1,0 +1,32 @@
+[
+  {
+    "date": "2026-09-08",
+    "tencmfcst_1_day": 110,
+    "tencmfcst_2_day": 110,
+    "tencmfcst_3_day": 110
+  },
+  {
+    "date": "2026-09-07",
+    "tencmfcst_1_day": 110,
+    "tencmfcst_2_day": 110,
+    "tencmfcst_3_day": 110
+  },
+  {
+    "date": "2026-09-06",
+    "tencmfcst_1_day": 108,
+    "tencmfcst_2_day": 108,
+    "tencmfcst_3_day": 107
+  },
+  {
+    "date": "2026-09-05",
+    "tencmfcst_1_day": 108,
+    "tencmfcst_2_day": 105,
+    "tencmfcst_3_day": 105
+  },
+  {
+    "date": "2026-09-04",
+    "tencmfcst_1_day": 110,
+    "tencmfcst_2_day": 105,
+    "tencmfcst_3_day": 103
+  }
+]

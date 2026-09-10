@@ -25,10 +25,19 @@ linters:
       # Genuinely unchecked calls are still reported.
       check-blank: false
     misspell:
-      # Mosquitto is the name of the MQTT broker, spelt with two t's by its
-      # authors. misspell reads it as a typo for the insect.
       ignore-rules:
+        # Mosquitto is the name of the MQTT broker, spelt with two t's by its
+        # authors. misspell reads it as a typo for the insect.
         - mosquitto
+        # "Collecte Localisation Satellites" is the French company that
+        # produces the homogenised multi-frequency radio flux series. A proper
+        # noun, not a misspelling of "collective".
+        - collecte
+        # wspr.live's terms of use contain "reasearch" and "accessable". The
+        # quote is reproduced verbatim in the package doc because paraphrasing
+        # somebody's licence is worse than preserving their typos.
+        - reasearch
+        - accessable
     revive:
       rules:
         - name: exported
