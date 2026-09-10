@@ -329,7 +329,7 @@ func (s *Scheduler) Statuses() []Status {
 			st = &sourceState{}
 		}
 		sched := scheduleFor(src)
-		staleAfter := staleAfter(sched.Interval())
+		staleAfter := sched.StaleAfter()
 		out = append(out, Status{
 			Name:        src.Name(),
 			Interval:    sched.String(),
@@ -360,10 +360,4 @@ func (s *Scheduler) Ready() bool {
 		}
 	}
 	return len(s.sources) > 0
-}
-
-// staleAfter is how long a source may go without a success before it counts as
-// stale: three intervals, so a single missed poll does not flap readiness.
-func staleAfter(interval time.Duration) time.Duration {
-	return 3 * interval
 }

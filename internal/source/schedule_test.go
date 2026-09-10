@@ -268,9 +268,73 @@ func TestStatusesReportTheDeclaredSchedule(t *testing.T) {
 	if !strings.Contains(st.Interval, "daily at") {
 		t.Errorf("Status.Interval = %q, want it to describe the daily schedule", st.Interval)
 	}
-	// Staleness must size off the schedule, not the nominal interval: three
-	// slots three hours apart means nine hours, not three.
-	if st.StaleAfter != 9*time.Hour {
-		t.Errorf("StaleAfter = %v, want 9h (three times the 3h shortest gap)", st.StaleAfter)
+	// Staleness must size off the quiet period the schedule actually allows,
+	// not the nominal interval and not the gap between the clustered slots.
+	// 17:00, 20:00 and 23:00 leaves eighteen hours until the next day's first
+	// slot, so the window is that plus the lag and an hour of grace.
+	const want = 18*time.Hour + 10*time.Minute + time.Hour
+	if st.StaleAfter != want {
+		t.Errorf("StaleAfter = %v, want %v (the 18h quiet period, plus lag and grace)",
+			st.StaleAfter, want)
+	}
+}
+
+// TestStaleAfterUsesTheLongestGapNotTheShortest is the regression test for a
+// bug that reached production: DRAO Penticton publishes at 17:00, 20:00 and
+// 23:00 UTC, so it is legitimately quiet for the eighteen hours between its
+// last slot and the next day's first. Sizing the staleness window off the
+// three-hour gap between its clustered slots reported a source that was
+// working perfectly as failed, and took /readyz down with it, for around nine
+// hours of every day.
+func TestStaleAfterUsesTheLongestGapNotTheShortest(t *testing.T) {
+	drao := DailyAt(90*time.Minute,
+		TimeOfDay{Hour: 17}, TimeOfDay{Hour: 20}, TimeOfDay{Hour: 23})
+
+	got := drao.StaleAfter()
+
+	// 18h longest gap + 1h30m publication lag + 1h grace.
+	const want = 18*time.Hour + 90*time.Minute + time.Hour
+	if got != want {
+		t.Errorf("StaleAfter() = %v, want %v", got, want)
+	}
+
+	// The specific failure: nine hours after a success, DRAO must still be
+	// considered healthy, because its next slot has not come round yet.
+	if got <= 9*time.Hour {
+		t.Errorf("StaleAfter() = %v, which still marks DRAO stale before its next slot", got)
+	}
+}
+
+func TestStaleAfterAlwaysExceedsTheLongestQuietPeriod(t *testing.T) {
+	tests := []struct {
+		name       string
+		sched      Schedule
+		longestGap time.Duration
+	}{
+		{"evenly spaced four a day", DailyAt(30*time.Minute,
+			TimeOfDay{Hour: 0, Minute: 30}, TimeOfDay{Hour: 6, Minute: 30},
+			TimeOfDay{Hour: 12, Minute: 30}, TimeOfDay{Hour: 18, Minute: 30}), 6 * time.Hour},
+		{"twice a day", DailyAt(20*time.Minute,
+			TimeOfDay{Hour: 4}, TimeOfDay{Hour: 16}), 12 * time.Hour},
+		{"once a day", DailyAt(30*time.Minute, TimeOfDay{Hour: 6}), 24 * time.Hour},
+		{"clustered then a long wait", DailyAt(90*time.Minute,
+			TimeOfDay{Hour: 17}, TimeOfDay{Hour: 20}, TimeOfDay{Hour: 23}), 18 * time.Hour},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.sched.StaleAfter(); got <= tc.longestGap {
+				t.Errorf("StaleAfter() = %v, which is inside the %v the schedule is legitimately quiet",
+					got, tc.longestGap)
+			}
+		})
+	}
+}
+
+func TestStaleAfterRespectsAFloor(t *testing.T) {
+	// A floor that slows polling must also slow the point at which we call the
+	// source stale, or the floor itself makes the source look unhealthy.
+	s := AtLeast(15*time.Minute, Every(time.Minute))
+	if got := s.StaleAfter(); got < 45*time.Minute {
+		t.Errorf("StaleAfter() = %v, want at least 45m for a 15m floor", got)
 	}
 }

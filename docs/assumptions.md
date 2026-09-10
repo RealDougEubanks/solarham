@@ -335,3 +335,25 @@ decided during that work and written down afterwards.
   boundaries.
 - **Recorded by:** Claude (with Doug Eubanks)
 - **Date:** 2026-09-09
+
+## Readiness sizes its staleness window off a schedule's longest quiet period
+
+- **Assumption:** A source is stale only once it has missed a poll its schedule
+  actually called for — for an unevenly spaced schedule that means the longest
+  gap between slots, plus the publication lag and an hour of grace, not three
+  times the shortest gap.
+- **Why:** The original rule was three times the nominal interval, which is
+  right for a fixed interval and wrong for a publication clock. DRAO Penticton
+  publishes at 17:00, 20:00 and 23:00 UTC: three hours, three hours, then
+  eighteen hours until the next day. Sizing off the three-hour gap gave a
+  nine-hour window on a source that is legitimately silent for eighteen, so
+  `/readyz` returned 503 from roughly 08:00 UTC each morning until the 17:00
+  slot came round. That is the endpoint the README tells operators to point an
+  uptime monitor at, so the effect was a daily page for a healthy system —
+  which trains people to ignore the alert that matters.
+- **Trade-off:** A genuine DRAO outage now takes 20h30m to surface instead of
+  9h. That is the correct trade: the source only produces new data three times
+  a day, so there is nothing to react to in the interim, and an alert nobody
+  believes is worth less than one that fires late.
+- **Recorded by:** Claude
+- **Date:** 2026-09-10
