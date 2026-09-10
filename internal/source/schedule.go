@@ -24,9 +24,18 @@ type Schedule interface {
 	// NextAfter returns the next poll time, strictly after t.
 	NextAfter(t time.Time) time.Time
 
-	// Interval is the nominal spacing between polls. It is used for staleness
-	// windows and backoff sizing, not for deciding when to poll.
+	// Interval is the nominal spacing between polls. It sizes the failure
+	// backoff, and is what a source reports as its cadence.
 	Interval() time.Duration
+
+	// StaleAfter is how long this source may legitimately go without a
+	// successful poll before something is actually wrong.
+	//
+	// This is deliberately not derived from Interval. A schedule whose slots
+	// are unevenly spaced is quiet for its *longest* gap, not its shortest,
+	// and sizing readiness off the shortest one reports a perfectly healthy
+	// source as failed for hours every day.
+	StaleAfter() time.Duration
 
 	// String describes the schedule for logs and the health endpoints.
 	String() string
@@ -49,6 +58,10 @@ type intervalSchedule struct{ d time.Duration }
 func (s intervalSchedule) NextAfter(t time.Time) time.Time { return t.Add(s.d) }
 func (s intervalSchedule) Interval() time.Duration         { return s.d }
 func (s intervalSchedule) String() string                  { return "every " + s.d.String() }
+
+// StaleAfter allows two missed polls before calling a fixed-interval source
+// stale, so a single blip does not flap readiness.
+func (s intervalSchedule) StaleAfter() time.Duration { return 3 * s.d }
 
 // TimeOfDay is a wall-clock time in UTC.
 type TimeOfDay struct {
@@ -160,6 +173,39 @@ func (s dailySchedule) Interval() time.Duration {
 	return shortest
 }
 
+// StaleAfter is the longest quiet period the schedule allows, plus the
+// publication lag and an hour of grace.
+//
+// The longest gap is the load-bearing part. DRAO Penticton publishes at 17:00,
+// 20:00 and 23:00 UTC: the gaps are three hours, three hours, and then
+// eighteen hours until the next day. Sizing readiness off the three-hour gap
+// marked a healthy source failed from 08:00 UTC every morning until its 17:00
+// slot came round -- roughly nine hours of false alarm a day, on the endpoint
+// the README tells operators to point an uptime monitor at.
+func (s dailySchedule) StaleAfter() time.Duration {
+	return s.longestGap() + s.lag + time.Hour
+}
+
+// longestGap is the longest interval between consecutive slots, wrapping
+// around midnight.
+func (s dailySchedule) longestGap() time.Duration {
+	if len(s.times) <= 1 {
+		return 24 * time.Hour
+	}
+	longest := time.Duration(0)
+	for i := range s.times {
+		next := s.times[(i+1)%len(s.times)]
+		gap := next.minutes() - s.times[i].minutes()
+		if gap <= 0 {
+			gap += 24 * 60
+		}
+		if d := time.Duration(gap) * time.Minute; d > longest {
+			longest = d
+		}
+	}
+	return longest
+}
+
 func (s dailySchedule) String() string {
 	parts := make([]string, 0, len(s.times))
 	for _, at := range s.times {
@@ -202,6 +248,16 @@ func (s flooredSchedule) Interval() time.Duration {
 		return inner
 	}
 	return s.floor
+}
+
+// StaleAfter takes the inner schedule's window, but never less than the floor
+// would imply -- a floor that slows polling must also slow the point at which
+// we call the source stale.
+func (s flooredSchedule) StaleAfter() time.Duration {
+	if inner := s.inner.StaleAfter(); inner > 3*s.floor {
+		return inner
+	}
+	return 3 * s.floor
 }
 
 func (s flooredSchedule) String() string {

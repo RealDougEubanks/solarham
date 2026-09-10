@@ -462,8 +462,8 @@ func TestBackoffStartsAtTheIntervalAndDoublesToACap(t *testing.T) {
 }
 
 func TestStaleAfterIsThreeIntervals(t *testing.T) {
-	if got := staleAfter(time.Minute); got != 3*time.Minute {
-		t.Errorf("staleAfter(1m) = %v, want 3m", got)
+	if got := Every(time.Minute).StaleAfter(); got != 3*time.Minute {
+		t.Errorf("Every(1m).StaleAfter() = %v, want 3m", got)
 	}
 }
 
