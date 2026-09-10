@@ -867,3 +867,44 @@ func TestEverySourceCanBeTurnedOff(t *testing.T) {
 	_, err := loadEnv(t, allSourcesOff(nil), nil)
 	assertProblem(t, err, "no sources are enabled", EnvPrefix+"SWPC_ENABLED=true")
 }
+
+// The MQTT QoS narrowing is guarded at the conversion rather than relying on
+// the range argument passed to loader.Int. CodeQL flagged the bare byte()
+// conversion, and it was right about the shape even though the bound made it
+// safe: a narrowing that is only correct because of a caller's argument is one
+// edit away from wrapping in silence.
+func TestTheMQTTQoSNarrowingCannotWrap(t *testing.T) {
+	tests := map[int]byte{
+		-1:   0, // below range
+		0:    0,
+		1:    1,
+		2:    2,
+		3:    0, // above the QoS range
+		256:  0, // would wrap to 0 under a bare byte() conversion
+		257:  0, // would wrap to 1 under a bare byte() conversion
+		-256: 0,
+	}
+	for in, want := range tests {
+		if got := mqttQoS(in); got != want {
+			t.Errorf("mqttQoS(%d) = %d, want %d", in, got, want)
+		}
+	}
+}
+
+// And the loader still rejects an out-of-range value rather than silently
+// clamping it, so an operator learns their setting was wrong.
+func TestAnOutOfRangeQoSIsAConfigurationError(t *testing.T) {
+	// loadEnv keys the map without the SOLARHAM_ prefix; it strips it on lookup.
+	_, err := loadEnv(t, map[string]string{
+		"PROMETHEUS_ENABLED": "true",
+		"MQTT_ENABLED":       "true",
+		"MQTT_BROKER":        "tcp://broker:1883",
+		"MQTT_QOS":           "9",
+	}, nil)
+	if err == nil {
+		t.Fatal("Load accepted a QoS of 9, want an error naming the setting")
+	}
+	if !strings.Contains(err.Error(), "MQTT_QOS") {
+		t.Errorf("error %q does not name the offending setting", err)
+	}
+}

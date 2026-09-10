@@ -318,6 +318,22 @@ func loadOTLP(l *loader, cfg *Config) {
 	}
 }
 
+// mqttQoS narrows the QoS setting to the byte the MQTT client takes.
+//
+// loader.Int already rejects anything outside 0..2 and returns the default, so
+// this cannot truncate today. The bound is repeated here anyway, because the
+// narrowing is only safe by virtue of an argument passed at the call site: if
+// someone later widens that range, a bare byte() conversion would wrap in
+// silence. That is the same shape as the float-to-int overflow in the LISIRD
+// timestamp handling, which parsed the same input two different ways on amd64
+// and arm64 -- so it is worth a guard rather than a comment.
+func mqttQoS(v int) byte {
+	if v < 0 || v > 2 {
+		return 0
+	}
+	return byte(v)
+}
+
 func loadMQTT(l *loader, cfg *Config) {
 	cfg.MQTT = MQTT{
 		Enabled:  l.Bool("MQTT_ENABLED", false),
@@ -327,7 +343,7 @@ func loadMQTT(l *loader, cfg *Config) {
 		Password: l.Secret("MQTT_PASSWORD"),
 
 		Topic:   l.String("MQTT_TOPIC", "solarham"),
-		QoS:     byte(l.Int("MQTT_QOS", 0, 0, 2)),
+		QoS:     mqttQoS(l.Int("MQTT_QOS", 0, 0, 2)),
 		Retain:  l.Bool("MQTT_RETAIN", true),
 		Timeout: l.Duration("MQTT_TIMEOUT", 10*time.Second, time.Second, 2*time.Minute),
 
