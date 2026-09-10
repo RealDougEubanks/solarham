@@ -4,10 +4,11 @@ on:
   push:
     tags: ["v*"]
 
+# Least privilege at the top: the verify job needs only to read the code. The
+# write permissions belong to the release job alone and are declared there, so
+# a compromised step in verify cannot create a release or mint an attestation.
 permissions:
-  contents: write
-  id-token: write
-  attestations: write
+  contents: read
 
 env:
   GO_VERSION: "1.26"
@@ -37,6 +38,10 @@ jobs:
     name: Release
     needs: verify
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 

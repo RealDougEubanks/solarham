@@ -148,7 +148,19 @@ Both InfluxDB sinks write line protocol over the standard library's
 `net/http`. No InfluxDB client library is used, which removes a dependency and
 its transitive tree.
 
-Check for known vulnerabilities before every release:
+Three checks run automatically, and they cover different things:
+
+| Check | Runs | Finds |
+|---|---|---|
+| `govulncheck` | every push and pull request | known CVEs that are **reachable** from this code, so a finding is real exposure rather than a CVE somewhere in the tree we never call |
+| Dependency review | every pull request | a dependency being *introduced* with a known vulnerability, blocking at moderate severity |
+| CodeQL | pushes, pull requests, and weekly | security-relevant data flows — a value reaching a dangerous sink by a path no single-file linter follows |
+
+CodeQL also runs on a schedule because its query pack is updated continuously:
+code that was clean when it merged can be found vulnerable months later without
+a line of it changing.
+
+To run the dependency scan yourself:
 
 ```bash
 go install golang.org/x/vuln/cmd/govulncheck@latest
@@ -156,7 +168,10 @@ govulncheck ./...
 ```
 
 Dependabot is configured in `.github/dependabot.yml` and opens grouped weekly
-pull requests for Go modules, GitHub Actions, and the base image.
+pull requests for Go modules, GitHub Actions, and the base image. Dependabot
+**alerts** are a separate switch from that file and are enabled on the
+repository: the file keeps dependencies current, the alerts say one has a known
+CVE.
 
 ## Supply chain
 

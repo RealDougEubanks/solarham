@@ -1,0 +1,66 @@
+name: CodeQL
+
+# Static analysis of the Go source.
+#
+# This complements rather than duplicates the other checks. golangci-lint finds
+# style and correctness problems in code as written; govulncheck finds known
+# CVEs in dependencies we pull in; CodeQL finds security-relevant data flows —
+# a value reaching a dangerous sink through a path no single-file linter
+# follows.
+#
+# It runs on pushes and pull requests, and also weekly: CodeQL's query pack is
+# updated continuously, so a commit that was clean when merged can be found
+# vulnerable months later without a line of it changing.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Tuesday 04:17 UTC. Off the hour deliberately, so this does not join the
+    # thundering herd of jobs everyone else schedules on the hour.
+    - cron: "17 4 * * 2"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+    permissions:
+      # security-events: write is what lets the run upload its findings to the
+      # repository's Security tab. Without it the analysis succeeds and the
+      # results go nowhere.
+      security-events: write
+      contents: read
+      actions: read
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: "1.26"
+
+      - name: Initialise CodeQL
+        uses: github/codeql-action/init@faaca9a8f6edddba5725ffe5adefdab6669a2eca # v3
+        with:
+          languages: go
+          # security-extended adds queries that are lower-confidence but
+          # security-relevant. This codebase parses a dozen third-party formats
+          # and holds credentials, so the extra noise is worth the coverage.
+          queries: security-extended
+
+      - name: Build
+        uses: github/codeql-action/autobuild@faaca9a8f6edddba5725ffe5adefdab6669a2eca # v3
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@faaca9a8f6edddba5725ffe5adefdab6669a2eca # v3
+        with:
+          category: "/language:go"
