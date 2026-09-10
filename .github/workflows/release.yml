@@ -90,6 +90,19 @@ jobs:
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
+      # The Docker Hub page is the first thing anyone pulling this sees, and it
+      # is easy to forget it exists because nothing in the build fails when it
+      # is empty. Syncing it on every release means it cannot drift away from
+      # the code it describes.
+      - name: Sync the Docker Hub description
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.IMAGE }}
+          short-description: "Space weather and HF propagation exporter for Prometheus, InfluxDB, MQTT and OTLP"
+          readme-filepath: ./docs/dockerhub-overview.md
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
