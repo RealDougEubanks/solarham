@@ -218,7 +218,13 @@ func (c *Client) Get(ctx context.Context, req Request) (*Response, error) {
 
 		// The rate limiter is waited on inside the retry loop, so a retry is
 		// spaced by the host policy as well as the backoff.
-		if err := c.limiterFor(host).wait(ctx, c.clock, c.sleep); err != nil {
+		//
+		// On a host with a multi-minute floor that wait dominates everything
+		// else, and it used to be invisible: a poll would sit here for minutes
+		// with nothing logged and no counter moving, which reads from the
+		// outside exactly like a source that was never scheduled. Anything
+		// long enough to be mistaken for a hang says so.
+		if err := c.waitForHost(ctx, host, req.URL); err != nil {
 			return nil, err
 		}
 
@@ -237,6 +243,23 @@ func (c *Client) Get(ctx context.Context, req Request) (*Response, error) {
 	}
 
 	return nil, lastErr
+}
+
+// longWait is the point past which waiting for a rate-limit token stops being
+// an implementation detail and starts being something an operator debugging a
+// stalled source needs to see.
+const longWait = 5 * time.Second
+
+// waitForHost blocks until the host policy allows a request, logging the wait
+// if it is long enough to look like a hang.
+func (c *Client) waitForHost(ctx context.Context, host, rawURL string) error {
+	limiter := c.limiterFor(host)
+
+	if delay := limiter.peek(c.clock()); delay >= longWait {
+		c.log.Info("waiting for the host rate limit before requesting",
+			"host", host, "wait", delay.Round(time.Second), "url", redact.URL(rawURL))
+	}
+	return limiter.wait(ctx, c.clock, c.sleep)
 }
 
 // attempt performs one HTTP request.
@@ -428,6 +451,30 @@ func (l *hostLimiter) wait(ctx context.Context, clock func() time.Time, sleep fu
 			return err
 		}
 	}
+}
+
+// peek reports how long a caller would have to wait, without taking a token.
+//
+// It exists so the wait can be logged before it happens rather than after: a
+// message that arrives once the wait is over is no use to somebody watching a
+// source that appears to be doing nothing.
+func (l *hostLimiter) peek(now time.Time) time.Duration {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if now.Before(l.until) {
+		return l.until.Sub(now)
+	}
+	if l.policy.MinInterval <= 0 || l.tokens > 0 {
+		return 0
+	}
+	if l.lastFill.IsZero() {
+		return 0
+	}
+	if wait := l.policy.MinInterval - now.Sub(l.lastFill); wait > 0 {
+		return wait
+	}
+	return 0
 }
 
 // reserve takes a token if one is available, or reports how long to wait.

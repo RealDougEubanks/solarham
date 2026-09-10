@@ -7,18 +7,23 @@
 //     restart the container. It must not fail because an upstream
 //     or a backend is down, or an outage at nasa.gov would cause a
 //     restart loop.
-//   - /readyz   readiness: is this instance serving current data? Fails when
-//     any enabled source has no fresh success, which is what an
-//     orchestrator should route traffic on.
+//   - /readyz   readiness: can this instance serve? Fails when no enabled
+//     source has a fresh success, which is the condition an
+//     orchestrator can actually act on by restarting or draining.
+//     A single upstream outage is reported by /health and by
+//     solar_source_stale, not here; see report.ready.
 //   - /health   detail: a human- and monitor-readable breakdown of every
 //     source and the configured sinks, returning 503 when unhealthy
 //     so external monitors can alert on the status code alone.
 //
-// Readiness is per-source and relative to each source's own interval, because
-// "recent" means something very different for a one-minute source than for an
-// hourly one. A source that has never succeeded is not ready, which is what
-// makes a freshly started container correctly report itself unready until it
-// has actually fetched something.
+// Freshness is judged per source and relative to that source's own schedule,
+// because "recent" means something very different for a one-minute source than
+// for one that publishes twice a day. A source that has never succeeded is not
+// fresh, which is what makes a freshly started container correctly report
+// itself unready until it has actually fetched something.
+//
+// Whether a stale source makes the instance unready is a separate question,
+// answered by SOLARHAM_READY_REQUIRE_ALL and explained on report.ready.
 package httpserver
 
 import (
@@ -248,8 +253,13 @@ func (s *Server) handleReadiness(w http.ResponseWriter, _ *http.Request) {
 
 	var b strings.Builder
 	b.WriteString("not ready\n")
-	if len(report.sources) == 0 {
+	switch {
+	case len(report.sources) == 0:
 		b.WriteString("no sources are enabled\n")
+	case s.cfg.ReadyRequireAll:
+		b.WriteString("policy: every source must be fresh\n")
+	default:
+		b.WriteString("policy: no source has a fresh success\n")
 	}
 	for _, sr := range report.sources {
 		if sr.ready {
@@ -272,23 +282,55 @@ type sourceReport struct {
 // status code must reach the same verdict as an orchestrator probing /readyz.
 type report struct {
 	sources []sourceReport
+
+	// requireAll selects the strict policy: every source must be fresh. It is
+	// off by default; see ready for why.
+	requireAll bool
 }
 
-// ready reports whether every enabled source has a fresh success.
+// ready reports whether this instance can serve, under the configured policy.
 //
-// No sources at all is not ready. An exporter with nothing to poll can never
-// produce data, and reporting it ready would hide a misconfiguration behind a
-// green probe.
+// The useful question for a readiness probe is not "is everything perfect" but
+// "is there an action the thing probing me can take". A readiness failure tells
+// an orchestrator to stop routing here and send traffic to another instance.
+//
+// One upstream being down fails that test. Every replica polls the same public
+// endpoints, so shifting traffic reaches an instance missing exactly the same
+// source, and a restart does not bring celestrak.org back. Under ReadyAll a
+// single third-party outage pins the endpoint at 503 with no remediation
+// available -- and a probe that is red for reasons nobody can act on is one
+// people learn to ignore.
+//
+// Every source stale is different. That points at something local and
+// fixable: no egress, broken DNS, a clock so far off that every window looks
+// expired. Restarting or draining plausibly helps, so that is what the default
+// policy fails on.
+//
+// Per-source freshness has not been discarded, only moved to where it can be
+// acted on: /health reports it per source, and solar_source_stale carries the
+// exporter's own verdict into Prometheus, where an alert can name one source,
+// one owner and one runbook.
 func (r report) ready() bool {
+	// No sources at all is not ready under any policy. An exporter with
+	// nothing to poll can never produce data, and reporting it ready would
+	// hide a misconfiguration behind a green probe.
 	if len(r.sources) == 0 {
 		return false
 	}
+	if r.requireAll {
+		for _, sr := range r.sources {
+			if !sr.ready {
+				return false
+			}
+		}
+		return true
+	}
 	for _, sr := range r.sources {
-		if !sr.ready {
-			return false
+		if sr.ready {
+			return true
 		}
 	}
-	return true
+	return false
 }
 
 // status is the overall verdict for /health.
@@ -325,7 +367,10 @@ func (s *Server) evaluate() report {
 	}
 
 	statuses := s.deps.Statuses()
-	out := report{sources: make([]sourceReport, 0, len(statuses))}
+	out := report{
+		sources:    make([]sourceReport, 0, len(statuses)),
+		requireAll: s.cfg.ReadyRequireAll,
+	}
 	for _, st := range statuses {
 		out.sources = append(out.sources, s.judge(st))
 	}
@@ -429,8 +474,18 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 		resp.Sources = append(resp.Sources, sh)
 	}
 
+	// /health answers on the strict rule regardless of the readiness policy:
+	// anything short of every source fresh is 503.
+	//
+	// This is the deliberate division of labour between the two endpoints. An
+	// orchestrator probing /readyz should only act when acting would help, so
+	// it is lenient. An external uptime monitor wants to know the moment the
+	// dataset stops being complete, and a human reads the body to see which
+	// source it was, so /health stays strict. Loosening readiness therefore
+	// costs no monitoring coverage -- it moves it to the endpoint whose job
+	// it already was.
 	code := http.StatusOK
-	if !rep.ready() {
+	if rep.status() != StatusOK {
 		code = http.StatusServiceUnavailable
 	}
 	writeJSON(w, code, resp)

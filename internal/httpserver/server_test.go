@@ -137,10 +137,11 @@ func TestLivenessIsAlwaysOKEvenWhenEverythingElseIsBroken(t *testing.T) {
 	}
 }
 
-func TestReadinessIs503WhenASourceHasNeverSucceeded(t *testing.T) {
+func TestReadinessIs503WhenNoSourceHasEverSucceeded(t *testing.T) {
 	// A freshly started container must report itself unready until it has
 	// actually fetched something.
-	h := newTestServer(t, testConfig(), freshSource("swpc"), neverSucceededSource("hamqsl"))
+	h := newTestServer(t, testConfig(),
+		neverSucceededSource("swpc"), neverSucceededSource("hamqsl"))
 
 	rec := get(t, h, "/readyz")
 	if rec.Code != http.StatusServiceUnavailable {
@@ -148,6 +149,18 @@ func TestReadinessIs503WhenASourceHasNeverSucceeded(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "no successful poll yet") {
 		t.Errorf("/readyz body does not explain the never-succeeded source:\n%s", rec.Body.String())
+	}
+}
+
+func TestReadinessIs200WhileOneSourceIsStillWarmingUp(t *testing.T) {
+	// A source that has not answered yet must not hold the whole exporter
+	// unready once anything else is serving: on a cold start the slow-cadence
+	// sources can be minutes behind the fast ones, and the instance is
+	// perfectly able to serve what it already has.
+	h := newTestServer(t, testConfig(), freshSource("swpc"), neverSucceededSource("hamqsl"))
+
+	if rec := get(t, h, "/readyz"); rec.Code != http.StatusOK {
+		t.Fatalf("/readyz = %d, want 200 while one source warms up\n%s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -164,12 +177,47 @@ func TestReadinessIs200WhenEverySourceIsFresh(t *testing.T) {
 	}
 }
 
-func TestReadinessIs503AndNamesTheStaleSource(t *testing.T) {
+// TestReadinessIgnoresASingleStaleSource pins the reason readiness was
+// loosened. Under the old rule a single third-party outage -- celestrak.org
+// returning 503 for a day -- pinned /readyz at 503 even though the exporter was
+// serving 15 of 16 sources perfectly. Nothing an orchestrator can do fixes a
+// dead upstream, so that verdict caused restarts and page noise without ever
+// restoring the source.
+func TestReadinessIgnoresASingleStaleSource(t *testing.T) {
 	h := newTestServer(t, testConfig(), freshSource("swpc"), staleSource("hamqsl"), freshSource("kc2g"))
+
+	if rec := get(t, h, "/readyz"); rec.Code != http.StatusOK {
+		t.Fatalf("/readyz = %d, want 200 with one of three sources stale\n%s",
+			rec.Code, rec.Body.String())
+	}
+}
+
+// TestHealthStaysStrictWhenReadinessIsLenient is the other half of that trade:
+// loosening readiness must not lose the signal, only move it to the endpoint an
+// uptime monitor watches.
+func TestHealthStaysStrictWhenReadinessIsLenient(t *testing.T) {
+	h := newTestServer(t, testConfig(), freshSource("swpc"), staleSource("hamqsl"))
+
+	if rec := get(t, h, "/readyz"); rec.Code != http.StatusOK {
+		t.Errorf("/readyz = %d, want 200", rec.Code)
+	}
+	rec := get(t, h, "/health")
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("/health = %d, want 503 -- the strict signal must survive", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "hamqsl") {
+		t.Errorf("/health does not name the stale source:\n%s", rec.Body.String())
+	}
+}
+
+func TestStrictReadinessPolicyFailsOnASingleStaleSource(t *testing.T) {
+	cfg := testConfig()
+	cfg.ReadyRequireAll = true
+	h := newTestServer(t, cfg, freshSource("swpc"), staleSource("hamqsl"), freshSource("kc2g"))
 
 	rec := get(t, h, "/readyz")
 	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("/readyz = %d, want 503", rec.Code)
+		t.Fatalf("/readyz = %d, want 503 under the strict policy", rec.Code)
 	}
 	assertNoStore(t, rec)
 
@@ -288,10 +336,20 @@ func TestHealthIs503AndReportsDegradedOrFail(t *testing.T) {
 				t.Errorf("status is %q, want %q", body.Status, tc.want)
 			}
 
-			// An external monitor alerting on /health's status code must
-			// reach the same verdict as an orchestrator probing /readyz.
-			if ready := get(t, h, "/readyz"); ready.Code != rec.Code {
-				t.Errorf("/readyz = %d but /health = %d; the two endpoints disagree", ready.Code, rec.Code)
+			// The two endpoints answer different questions and agree only
+			// when the whole dataset is gone. /health is strict: anything
+			// short of every source fresh is 503. /readyz asks whether this
+			// instance can serve at all, so it only joins /health once
+			// nothing is fresh -- the case that actually points at something
+			// local and fixable.
+			ready := get(t, h, "/readyz")
+			wantReady := http.StatusServiceUnavailable
+			if tc.want == StatusDegraded {
+				wantReady = http.StatusOK
+			}
+			if ready.Code != wantReady {
+				t.Errorf("/readyz = %d, want %d while /health reports %q",
+					ready.Code, wantReady, tc.want)
 			}
 		})
 	}

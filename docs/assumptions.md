@@ -357,3 +357,40 @@ decided during that work and written down afterwards.
   believes is worth less than one that fires late.
 - **Recorded by:** Claude
 - **Date:** 2026-09-10
+
+## Readiness fails only when no source is fresh; /health keeps the strict rule
+
+- **Assumption:** `/readyz` reports whether this instance can serve at all, so
+  it fails only when no enabled source has a fresh success. A single stale
+  source is reported by `/health` and by `solar_source_stale_window_seconds`,
+  not by readiness.
+- **Why:** A readiness probe exists to tell an orchestrator to restart or drain.
+  One upstream being down fails that test: every replica polls the same public
+  endpoints, so draining reaches an instance missing the same source, and no
+  restart brings `celestrak.org` back. Under the old rule a celestrak outage
+  pinned `/readyz` at 503 with 15 of 16 sources healthy and no remediation
+  available — an alert nobody can act on, which the golden rules already call
+  noise. Every source stale is different: that points at lost egress, broken
+  DNS or a badly skewed clock, all of which a restart plausibly fixes.
+- **Trade-off:** A partial dataset now reads as ready. `/health` still returns
+  503 the moment any source is stale, so external monitoring is unchanged, and
+  `SOLARHAM_READY_REQUIRE_ALL=true` restores the old behaviour.
+- **Recorded by:** Claude
+- **Date:** 2026-09-10
+
+## One poll is bounded as a whole, not just its individual requests
+
+- **Assumption:** Every `Poll` runs under a two-minute budget covering all of
+  its retries and rate-limit waits, and a poll cut off by that budget is
+  recorded as a failure.
+- **Why:** The per-request timeout in `httpx` bounds one HTTP call, but retries
+  wait on the shared per-host rate limiter. On a host with a five-minute floor,
+  three attempts is fifteen minutes inside a single `Poll`. In production a
+  celestrak poll ran 420 seconds while `/health` reported `successes=0,
+  failures=0` — indistinguishable from a source that was never scheduled.
+- **Trade-off:** On hosts whose politeness floor exceeds the budget, retries
+  within one poll no longer happen. That costs nothing real: the next scheduled
+  poll does the same work without holding open a goroutine and a misleading
+  health entry. Long rate-limit waits are now logged before they begin.
+- **Recorded by:** Claude
+- **Date:** 2026-09-10

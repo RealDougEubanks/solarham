@@ -147,6 +147,14 @@ func run() int {
 	scheduler := source.NewScheduler(sources, set, log, sourceObserver(prom))
 	scheduler.SetAuthority(sourceAuthority)
 
+	// Publish each source's staleness window so an alerting rule can compare
+	// it against the last-success timestamp without hard-coding a threshold
+	// per source. The windows come from the schedules and do not change while
+	// the process runs, so this is set once here.
+	for _, st := range scheduler.Statuses() {
+		prom.SetStaleWindow(st.Name, st.StaleAfter)
+	}
+
 	srv, err := httpserver.New(cfg.HTTP, httpserver.Deps{
 		MetricsHandler: metricsHandler(prom),
 		MetricsPath:    metricsPath(prom),

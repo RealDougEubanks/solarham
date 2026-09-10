@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -488,5 +489,88 @@ func TestDisablingTheJitterStillYieldsAUsableTimerDelay(t *testing.T) {
 
 	if got := s.firstDelay(); got <= 0 {
 		t.Errorf("firstDelay() = %v with jitter disabled, want a positive delay", got)
+	}
+}
+
+// blockingSource hangs inside Poll until its context is done, standing in for a
+// source stuck waiting on a multi-minute rate-limit token.
+type blockingSource struct {
+	name     string
+	interval time.Duration
+	entered  chan struct{}
+	once     sync.Once
+}
+
+func (s *blockingSource) Name() string            { return s.name }
+func (s *blockingSource) Interval() time.Duration { return s.interval }
+
+func (s *blockingSource) Poll(ctx context.Context) (metric.Batch, error) {
+	s.once.Do(func() { close(s.entered) })
+	<-ctx.Done()
+	return metric.Batch{}, ctx.Err()
+}
+
+// TestAPollThatHangsIsCutOffAndRecordedAsAFailure is the regression test for a
+// production incident: celestrak's retries each waited on a five-minute host
+// floor, so one Poll ran for 420 seconds. Nothing was logged and no counter
+// moved for the whole time, so /health showed successes=0 failures=0 -- which
+// is what a source that was never scheduled also looks like.
+func TestAPollThatHangsIsCutOffAndRecordedAsAFailure(t *testing.T) {
+	src := &blockingSource{name: "stuck", interval: time.Minute, entered: make(chan struct{})}
+
+	s := newTestScheduler([]Source{src}, &capturingPublisher{}, discardLogger(), nil)
+	s.pollBudget = 50 * time.Millisecond
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.pollOnce(ctx, src)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("pollOnce did not return; the poll budget is not bounding Poll")
+	}
+
+	st := s.Statuses()[0]
+	if st.Failures != 1 {
+		t.Errorf("Failures = %d, want 1; a poll cut off by its budget is a real failure", st.Failures)
+	}
+	if !strings.Contains(st.LastError, "budget") {
+		t.Errorf("LastError = %q, want it to say the budget was exceeded", st.LastError)
+	}
+}
+
+// TestShutdownIsNotRecordedAsAPollFailure guards the other side of that change.
+// The budget must not make a clean stop look like an upstream fault.
+func TestShutdownIsNotRecordedAsAPollFailure(t *testing.T) {
+	src := &blockingSource{name: "stuck", interval: time.Minute, entered: make(chan struct{})}
+
+	s := newTestScheduler([]Source{src}, &capturingPublisher{}, discardLogger(), nil)
+	s.pollBudget = time.Hour
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.pollOnce(ctx, src)
+	}()
+
+	<-src.entered
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("pollOnce did not return after its context was cancelled")
+	}
+
+	if st := s.Statuses()[0]; st.Failures != 0 {
+		t.Errorf("Failures = %d, want 0; shutting down is not a source failure", st.Failures)
 	}
 }

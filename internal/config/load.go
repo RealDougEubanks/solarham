@@ -211,6 +211,7 @@ func loadHTTP(l *loader, cfg *Config) {
 		ReadTimeout:     l.Duration("HTTP_READ_TIMEOUT", 10*time.Second, time.Second, 5*time.Minute),
 		ShutdownTimeout: l.Duration("HTTP_SHUTDOWN_TIMEOUT", 10*time.Second, time.Second, 5*time.Minute),
 		StaleAfter:      l.Duration("HTTP_STALE_AFTER", 0, 0, 24*time.Hour),
+		ReadyRequireAll: l.Bool("READY_REQUIRE_ALL", false),
 	}
 }
 

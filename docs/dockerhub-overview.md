@@ -101,10 +101,12 @@ Request spacing is enforced per host, shared across every source, so enabling an
 |---|---|
 | `/metrics` | Prometheus exposition |
 | `/healthz` | liveness — always 200, checks nothing else |
-| `/readyz` | 200 when every enabled source has a fresh success, else 503 |
+| `/readyz` | 200 while any enabled source has a fresh success, else 503 |
 | `/health` | JSON with build info, per-source status and configured sinks |
 
 `/healthz` deliberately depends on nothing. Liveness that checks a backend turns an upstream outage into a restart loop, which is worse than the outage.
+
+`/readyz` applies the same reasoning one level up. One upstream going down does not stop this instance serving, and neither a restart nor a traffic shift brings it back, so readiness does not fail on it — `/health` does. Point an orchestrator at `/readyz` and an uptime monitor at `/health`. Set `SOLARHAM_READY_REQUIRE_ALL=true` if you want the strict rule on both.
 
 `/health` names which backends are configured but carries no URLs, hostnames or credentials — it is unauthenticated so external monitors can reach it, so it must not become a reconnaissance tool.
 
