@@ -201,18 +201,20 @@ jobs:
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
-      # The Docker Hub page is the first thing anyone pulling this sees, and it
-      # is easy to forget it exists because nothing in the build fails when it
-      # is empty. Syncing it on every release means it cannot drift away from
-      # the code it describes.
-      - name: Sync the Docker Hub description
-        uses: peter-evans/dockerhub-description@432a30c9e07499fd01da9f8a49f0faf9e0ca5b77 # v4
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: ${{ env.IMAGE }}
-          short-description: "Space weather and HF propagation exporter for Prometheus, InfluxDB, MQTT and OTLP"
-          readme-filepath: ./docs/dockerhub-overview.md
+      # The Docker Hub description is NOT synced from CI, deliberately.
+      #
+      # peter-evans/dockerhub-description PATCHes the repository endpoint, and
+      # Docker Hub rejects that for a repo:write token — verified on run
+      # 36191394041, where login and "Build and push" both succeeded and only
+      # this step returned "Forbidden". It needs repo:admin.
+      #
+      # repo:admin means Read, Write AND DELETE on every image repository in
+      # the account, because Docker Hub has no per-repository scoping for
+      # individual accounts. Granting four CI runners the ability to destroy
+      # published images so a README stays in sync is the wrong trade.
+      #
+      # Update the Docker Hub page by hand, or locally with an admin token that
+      # never enters CI. docs/dockerhub-overview.md remains the source text.
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
